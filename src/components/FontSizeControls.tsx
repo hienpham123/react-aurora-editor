@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { BlockFormatDropdown } from './BlockFormatDropdown';
 import { blockFormats } from '../const/constants';
+import { DropdownArrowIcon } from '../icons/icons';
 
 interface FontSizeControlsProps {
   disabled: boolean;
@@ -12,6 +13,7 @@ interface FontSizeControlsProps {
   getCurrentBlockFormat: () => string;
   getCurrentFontSizeLabel: () => string;
   fontSizeUpdateTrigger: number;
+  blockFormatUpdateTrigger: number;
 }
 
 export const FontSizeControls: React.FC<FontSizeControlsProps> = ({
@@ -23,7 +25,8 @@ export const FontSizeControls: React.FC<FontSizeControlsProps> = ({
   onIncreaseFontSize,
   getCurrentBlockFormat,
   getCurrentFontSizeLabel,
-  fontSizeUpdateTrigger
+  fontSizeUpdateTrigger,
+  blockFormatUpdateTrigger
 }) => {
   const blockFormatDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -33,9 +36,12 @@ export const FontSizeControls: React.FC<FontSizeControlsProps> = ({
         <button
           type="button"
           className={`hh-toolbar-button ${showBlockFormatDropdown ? 'hh-active' : ''}`}
-          onClick={(e) => {
+          onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            // Get current format before toggling to ensure dropdown shows correct selection
+            // Use onMouseDown to preserve selection
+            getCurrentBlockFormat();
             onToggleBlockFormat();
           }}
           disabled={disabled}
@@ -46,10 +52,11 @@ export const FontSizeControls: React.FC<FontSizeControlsProps> = ({
             const formatObj = blockFormats.find(f => f.value === currentFormat);
             return formatObj ? formatObj.label : 'Paragraph';
           })()}
-          <span className="hh-dropdown-arrow">▼</span>
+          <DropdownArrowIcon height={10} width={10}/>
         </button>
         {showBlockFormatDropdown && (
           <BlockFormatDropdown
+            key={blockFormatUpdateTrigger}
             currentFormat={getCurrentBlockFormat()}
             onSelect={onBlockFormatSelect}
           />

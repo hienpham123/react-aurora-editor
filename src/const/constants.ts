@@ -55,6 +55,19 @@ export const blockFormats: BlockFormat[] = [
   { value: 'preformatted', label: 'Preformatted', tag: 'pre' }
 ];
 
+export interface AlignmentOption {
+  value: string;
+  label: string;
+  command: string;
+}
+
+export const alignments: AlignmentOption[] = [
+  { value: 'left', label: 'Left', command: 'justifyLeft' },
+  { value: 'center', label: 'Center', command: 'justifyCenter' },
+  { value: 'right', label: 'Right', command: 'justifyRight' },
+  { value: 'justify', label: 'Justify', command: 'justifyFull' }
+];
+
 export const getButtonConfig = (button: ToolbarButton) => {
   const configs: Record<ToolbarButton, { icon: string; title: string }> = {
     bold: { icon: 'B', title: 'In đậm (Ctrl+B)' },

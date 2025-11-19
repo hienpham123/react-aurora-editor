@@ -15,12 +15,14 @@ import {
 interface ToolbarButtonProps {
   button: ToolbarButtonType;
   disabled: boolean;
+  isActive?: boolean;
   onClick: () => void;
 }
 
 export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   button,
   disabled,
+  isActive = false,
   onClick
 }) => {
   const buttonConfig = getButtonConfig(button);
@@ -51,7 +53,7 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   return (
     <button
       type="button"
-      className="hh-toolbar-button"
+      className={`hh-toolbar-button ${isActive ? 'hh-active' : ''}`}
       onClick={onClick}
       disabled={disabled}
       title={buttonConfig.title}

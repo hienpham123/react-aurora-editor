@@ -14,7 +14,6 @@ interface EditorContentProps {
   resizeHandleRef: RefObject<HTMLDivElement>;
   onResizeMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
   isApplyingFormat: RefObject<boolean>;
-  onAttachImageResizeHandlers: () => void;
 }
 
 export const EditorContent: React.FC<EditorContentProps> = ({

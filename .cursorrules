@@ -1,0 +1,126 @@
+{
+  "$schema": "https://cursor.sh/schemas/v1/cursorrules.json",
+  "rules": [
+    {
+      "id": "architecture",
+      "description": "High-level structure for a React 18-based custom text editor using a plugin-driven architecture.",
+      "priority": "high",
+      "patterns": ["src/**/*"],
+      "guidelines": [
+        "Follow a modular structure where each major feature lives in its own folder.",
+        "Use React 18 idioms like useTransition, useDeferredValue when beneficial.",
+        "Avoid deeply nested component trees; prefer composition.",
+        "Avoid prop-drilling by using Context + custom hooks.",
+        "Ensure editor core logic is separated from UI."
+      ]
+    },
+
+    {
+      "id": "state-management",
+      "description": "Rules for handling editor state.",
+      "priority": "highest",
+      "patterns": ["src/editor/state/**/*"],
+      "guidelines": [
+        "Use a centralized reducer for internal editor state.",
+        "State transitions must be immutable.",
+        "Editor commands should be pure functions that return new state.",
+        "Use Context Provider for exposing editor state + dispatch.",
+        "No global variables or shared mutable state."
+      ]
+    },
+
+    {
+      "id": "plugin-system",
+      "description": "Plugin system guidelines for extending editor behavior.",
+      "priority": "highest",
+      "patterns": ["src/plugins/**/*"],
+      "guidelines": [
+        "Each plugin must be self-contained: UI, keyboard events, commands.",
+        "Plugins must export: id, init, onKeyDown, command, toolbarIcon.",
+        "Plugins should never directly mutate editor state.",
+        "Avoid plugin-to-plugin coupling; use event-driven messaging.",
+        "Each plugin should declare its own TS types."
+      ]
+    },
+
+    {
+      "id": "ui-components",
+      "description": "Rules for UI components like Toolbar, EditorSurface, Panels, Modals.",
+      "priority": "medium",
+      "patterns": ["src/components/**/*"],
+      "guidelines": [
+        "UI must stay stateless whenever possible.",
+        "Toolbar buttons must be independent components.",
+        "Use CSS modules or styled-components, avoid inline styles.",
+        "Support theme variations including dark mode.",
+        "Do not mix editor logic with UI rendering logic."
+      ]
+    },
+
+    {
+      "id": "react-practices",
+      "description": "Rules for clean React code.",
+      "priority": "high",
+      "patterns": ["src/**/*.tsx", "src/**/*.ts"],
+      "guidelines": [
+        "Only use function components; avoid class components.",
+        "Memoize expensive logic with useMemo/useCallback.",
+        "Keep component size small (< 300 lines). Split when needed.",
+        "Use TypeScript everywhere; avoid 'any'.",
+        "Prefer controlled inputs for stable behavior."
+      ]
+    },
+
+    {
+      "id": "commands-engine",
+      "description": "Rules for shaping the command execution engine.",
+      "priority": "high",
+      "patterns": ["src/editor/commands/**/*"],
+      "guidelines": [
+        "Commands must be stateless: (state, payload) -> newState.",
+        "Commands cannot depend on UI or DOM.",
+        "Commands should be reusable by both toolbar and hotkeys.",
+        "All commands must be type-safe and documented."
+      ]
+    },
+
+    {
+      "id": "error-handling",
+      "description": "How errors should be handled inside the editor.",
+      "priority": "medium",
+      "patterns": ["src/**/*"],
+      "guidelines": [
+        "Never let plugin or command errors break typing.",
+        "Wrap risky operations in try/catch.",
+        "Log errors in a non-blocking way.",
+        "Provide fallback UI when a plugin fails."
+      ]
+    },
+
+    {
+      "id": "public-api",
+      "description": "Rules for what the editor exposes as its public API.",
+      "priority": "high",
+      "patterns": ["src/index.ts"],
+      "guidelines": [
+        "Export minimal surface: EditorProvider, useEditor, useSelection, registerPlugin, executeCommand.",
+        "Do not expose internal engine functions.",
+        "Ensure API functions have clean TypeScript signatures.",
+        "Public API should remain stable across versions."
+      ]
+    },
+
+    {
+      "id": "documentation",
+      "description": "Rules for documenting the editor project.",
+      "priority": "low",
+      "patterns": ["README.md", "docs/**/*"],
+      "guidelines": [
+        "Document all built-in plugins with usage examples.",
+        "Document architecture clearly with diagrams.",
+        "Document public APIs with TS signatures.",
+        "Offer a quick-start tutorial for React 18."
+      ]
+    }
+  ]
+}
