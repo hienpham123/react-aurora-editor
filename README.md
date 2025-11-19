@@ -81,4 +81,3 @@ Sử dụng `'|'` để tạo separator trong toolbar.
 
 MIT
 
-"# react-aurora-editor"  git init git add README.md git commit -m "first commit" git branch -M main git remote add origin https://github.com/hienpham123/react-aurora-editor.git git push -u origin main
