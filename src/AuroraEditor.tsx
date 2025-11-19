@@ -1,5 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import './AuroraEditor.css';
+import { Toolbar } from './components/Toolbar';
+import { EditorContent } from './components/EditorContent';
+import { ColorPicker, PickerColor } from './components/ColorPicker';
+import { ImageModal } from './components/ImageModal';
+import { fontColors } from './const/constants';
+import { hexToRgb, rgbToHsl, hslToRgb, rgbToHex } from './utils/utils';
 
 export interface AuroraEditorProps {
   value?: string;
@@ -64,12 +70,8 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
-  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
   const [showBlockFormatDropdown, setShowBlockFormatDropdown] = useState(false);
   const [showFontColorDropdown, setShowFontColorDropdown] = useState(false);
-  const fontSizeDropdownRef = useRef<HTMLDivElement>(null);
-  const blockFormatDropdownRef = useRef<HTMLDivElement>(null);
-  const fontColorDropdownRef = useRef<HTMLDivElement>(null);
   const [fontSizeUpdateTrigger, setFontSizeUpdateTrigger] = useState(0);
   const isApplyingFormatRef = useRef(false);
   const [hoveredColor, setHoveredColor] = useState<string | null>(null);
@@ -77,6 +79,14 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [pickerColor, setPickerColor] = useState({ h: 240, s: 100, l: 50, r: 35, g: 52, b: 119, hex: '#233477' });
   const isSelectingColorRef = useRef(false);
+  const savedColorPickerSelectionRef = useRef<Range | null>(null);
+
+  // Undo/Redo history
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef(-1);
+  const maxHistorySize = 50;
+  const isUndoRedoRef = useRef(false);
+  const saveHistoryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const attachImageResizeHandlers = useCallback(() => {
     if (!editorRef.current) return;
@@ -99,22 +109,87 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     });
   }, []);
 
+  // Initialize history when component mounts
+  useEffect(() => {
+    if (editorRef.current && historyRef.current.length === 0) {
+      const initialContent = editorRef.current.innerHTML || value || '';
+      historyRef.current = [initialContent];
+      historyIndexRef.current = 0;
+    }
+  }, []); // Only run once on mount
+
   useEffect(() => {
     if (editorRef.current && value !== editorRef.current.innerHTML) {
+      isUndoRedoRef.current = true;
       editorRef.current.innerHTML = value;
+
+      // Initialize history with current value if empty
+      if (historyRef.current.length === 0) {
+        historyRef.current = [value];
+        historyIndexRef.current = 0;
+      }
+
       // Re-attach image resize handlers after content update (debounced)
       const timeoutId = setTimeout(() => {
         attachImageResizeHandlers();
+        isUndoRedoRef.current = false;
       }, 100);
       return () => clearTimeout(timeoutId);
     }
   }, [value, attachImageResizeHandlers]);
 
+  // Save current state to history
+  const saveToHistory = useCallback(() => {
+    if (!editorRef.current || isUndoRedoRef.current) return;
+
+    const currentContent = editorRef.current.innerHTML;
+    const history = historyRef.current;
+    const currentIndex = historyIndexRef.current;
+
+    // Initialize history if empty
+    if (history.length === 0) {
+      history.push(currentContent);
+      historyIndexRef.current = 0;
+      return;
+    }
+
+    // Don't save if content hasn't changed
+    if (currentIndex >= 0 && currentIndex < history.length && history[currentIndex] === currentContent) {
+      return;
+    }
+
+    // Remove any future history if we're not at the end
+    if (currentIndex >= 0 && currentIndex < history.length - 1) {
+      history.splice(currentIndex + 1);
+    }
+
+    // Add new state
+    history.push(currentContent);
+
+    // Limit history size
+    if (history.length > maxHistorySize) {
+      history.shift();
+      // Don't change index if we removed from beginning
+    } else {
+      historyIndexRef.current = history.length - 1;
+    }
+  }, []);
+
   const handleContentChange = useCallback(() => {
     if (editorRef.current && onChange) {
       onChange(editorRef.current.innerHTML);
     }
-  }, [onChange]);
+
+    // Save history with debounce for typing, but immediate for programmatic changes
+    // The debounce helps avoid saving on every keystroke
+    if (saveHistoryTimeoutRef.current) {
+      clearTimeout(saveHistoryTimeoutRef.current);
+    }
+
+    saveHistoryTimeoutRef.current = setTimeout(() => {
+      saveToHistory();
+    }, 300);
+  }, [onChange, saveToHistory]);
 
   // Cleanup headings function (only when not applying format from dropdown)
   const cleanupHeadings = useCallback(() => {
@@ -182,21 +257,77 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       if (selectedImage && (selectedImage === target || selectedImage.contains(target))) {
         return;
       }
+      // Check if click is inside toolbar
+      const toolbar = document.querySelector('.hh-toolbar');
+      const isClickInToolbar = toolbar ? toolbar.contains(target) : false;
+
       // Close block format dropdown if clicking outside
-      if (blockFormatDropdownRef.current) {
-        const isClickInside = blockFormatDropdownRef.current.contains(target);
-        if (!isClickInside) {
+      if (showBlockFormatDropdown) {
+        if (!isClickInToolbar) {
+          // Click outside toolbar, definitely close
           setShowBlockFormatDropdown(false);
+        } else {
+          // Click in toolbar, check if it's on the block format dropdown or its button
+          const blockFormatDropdown = document.querySelector('.hh-blockformat-dropdown');
+          const isClickInBlockFormat = blockFormatDropdown ? blockFormatDropdown.contains(target) : false;
+
+          if (!isClickInBlockFormat) {
+            // Check if click is on the button by traversing up
+            let isClickOnButton = false;
+            if (target instanceof Element) {
+              let current: Element | null = target;
+              while (current && current !== toolbar) {
+                if (current.classList && current.classList.contains('hh-toolbar-dropdown-wrapper')) {
+                  if (current.querySelector('.hh-blockformat-dropdown')) {
+                    isClickOnButton = true;
+                    break;
+                  }
+                }
+                current = current.parentElement;
+              }
+            }
+
+            if (!isClickOnButton) {
+              setShowBlockFormatDropdown(false);
+            }
+          }
         }
       }
       
       // Close font color dropdown if clicking outside (but not when selecting a color)
-      if (fontColorDropdownRef.current && !isSelectingColorRef.current) {
-        const isClickInside = fontColorDropdownRef.current.contains(target);
-        if (!isClickInside) {
+      if (!isSelectingColorRef.current && showFontColorDropdown) {
+        if (!isClickInToolbar) {
+          // Click outside toolbar, definitely close
           setShowFontColorDropdown(false);
           setHoveredColor(null);
           setHoveredColorPosition(null);
+        } else {
+          // Click in toolbar, check if it's on the color dropdown or its button
+          const colorDropdown = document.querySelector('.hh-color-dropdown');
+          const isClickInColorDropdown = colorDropdown ? colorDropdown.contains(target) : false;
+
+          if (!isClickInColorDropdown) {
+            // Check if click is on the button by traversing up
+            let isClickOnButton = false;
+            if (target instanceof Element) {
+              let current: Element | null = target;
+              while (current && current !== toolbar) {
+                if (current.classList && current.classList.contains('hh-toolbar-dropdown-wrapper')) {
+                  if (current.querySelector('.hh-color-dropdown')) {
+                    isClickOnButton = true;
+                    break;
+                  }
+                }
+                current = current.parentElement;
+              }
+            }
+
+            if (!isClickOnButton) {
+              setShowFontColorDropdown(false);
+              setHoveredColor(null);
+              setHoveredColorPosition(null);
+            }
+          }
         }
       }
       
@@ -211,21 +342,265 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       }
     };
 
-    document.addEventListener('click', handleClickOutside);
+    // Use mousedown instead of click to catch events before stopPropagation
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
       observer.disconnect();
     };
-  }, [selectedImage, attachImageResizeHandlers, cleanupHeadings]);
+  }, [selectedImage, attachImageResizeHandlers, cleanupHeadings, showFontColorDropdown, showBlockFormatDropdown, isSelectingColorRef]);
 
   const execCommand = useCallback((command: string, value?: string) => {
+    // Save state before executing command (except for undo/redo which are handled separately)
+    if (command !== 'undo' && command !== 'redo' && editorRef.current) {
+      saveToHistory();
+    }
     document.execCommand(command, false, value);
     editorRef.current?.focus();
     handleContentChange();
     if (command === 'fontSize') {
       setFontSizeUpdateTrigger(prev => prev + 1);
     }
-  }, [handleContentChange]);
+  }, [handleContentChange, saveToHistory]);
+
+  const handleUndo = useCallback(() => {
+    if (!editorRef.current) return;
+
+    const history = historyRef.current;
+    let currentIndex = historyIndexRef.current;
+
+    // Initialize history if empty
+    if (history.length === 0) {
+      const currentContent = editorRef.current.innerHTML;
+      history.push(currentContent);
+      historyIndexRef.current = 0;
+      return;
+    }
+
+    // Can't undo if we're at the beginning
+    if (currentIndex <= 0) {
+      // If we're at index 0 but content has changed, save current state first
+      const currentContent = editorRef.current.innerHTML;
+      if (history[0] !== currentContent) {
+        history.unshift(currentContent);
+        historyIndexRef.current = 1;
+        currentIndex = 1;
+      } else {
+        return; // Already at the beginning with same content
+      }
+    }
+
+    // Save current state before undoing (if it's different from what's in history)
+    if (currentIndex >= 0 && currentIndex < history.length) {
+      const currentContent = editorRef.current.innerHTML;
+      if (history[currentIndex] !== currentContent) {
+        // Current content is different, save it first
+        if (currentIndex === history.length - 1) {
+          history.push(currentContent);
+          historyIndexRef.current = history.length - 1;
+          currentIndex = history.length - 1;
+        } else {
+          // We're in the middle, replace current position
+          history[currentIndex] = currentContent;
+        }
+      }
+    }
+
+    // Move to previous state
+    const newIndex = currentIndex - 1;
+    if (newIndex < 0 || newIndex >= history.length) return;
+    
+    const previousContent = history[newIndex];
+
+    if (previousContent !== undefined) {
+      isUndoRedoRef.current = true;
+
+      // Save selection
+      const selection = window.getSelection();
+      let savedRange: Range | null = null;
+      if (selection && selection.rangeCount > 0) {
+        savedRange = selection.getRangeAt(0).cloneRange();
+      }
+
+      // Restore content
+      editorRef.current.innerHTML = previousContent;
+      historyIndexRef.current = newIndex;
+
+      // Restore selection if possible
+      if (savedRange && selection) {
+        try {
+          // Try to restore selection
+          const newRange = document.createRange();
+          const walker = document.createTreeWalker(
+            editorRef.current,
+            NodeFilter.SHOW_TEXT,
+            null
+          );
+
+          let node: Node | null = null;
+          let offset = 0;
+          let found = false;
+
+          // Try to find a similar position
+          if (savedRange.startContainer.nodeType === Node.TEXT_NODE) {
+            const textContent = savedRange.startContainer.textContent || '';
+            const startOffset = savedRange.startOffset;
+
+            // Find text node with similar content
+            while ((node = walker.nextNode())) {
+              if (node.textContent === textContent) {
+                offset = Math.min(startOffset, node.textContent.length);
+                found = true;
+                break;
+              }
+            }
+          }
+
+          if (found && node) {
+            newRange.setStart(node, offset);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } else {
+            // Fallback: place cursor at end
+            const range = document.createRange();
+            range.selectNodeContents(editorRef.current);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        } catch (err) {
+          // If restoration fails, just place cursor at end
+          const range = document.createRange();
+          range.selectNodeContents(editorRef.current);
+          range.collapse(false);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }
+
+      editorRef.current.focus();
+      handleContentChange();
+
+      // Reattach image handlers
+      attachImageResizeHandlers();
+
+      setTimeout(() => {
+        isUndoRedoRef.current = false;
+      }, 100);
+    }
+  }, [handleContentChange, attachImageResizeHandlers]);
+
+  const handleRedo = useCallback(() => {
+    if (!editorRef.current) return;
+
+    const history = historyRef.current;
+    let currentIndex = historyIndexRef.current;
+
+    // Initialize history if empty
+    if (history.length === 0) {
+      const currentContent = editorRef.current.innerHTML;
+      history.push(currentContent);
+      historyIndexRef.current = 0;
+      return;
+    }
+
+    // Can't redo if we're at the end
+    if (currentIndex >= history.length - 1) return;
+
+    // Save current state before redoing (if it's different from what's in history)
+    if (currentIndex >= 0 && currentIndex < history.length) {
+      const currentContent = editorRef.current.innerHTML;
+      if (history[currentIndex] !== currentContent) {
+        // Current content is different, update it in history
+        history[currentIndex] = currentContent;
+      }
+    }
+
+    // Move to next state
+    const newIndex = currentIndex + 1;
+    if (newIndex >= history.length) return;
+    
+    const nextContent = history[newIndex];
+
+    if (nextContent !== undefined) {
+      isUndoRedoRef.current = true;
+
+      // Save selection
+      const selection = window.getSelection();
+      let savedRange: Range | null = null;
+      if (selection && selection.rangeCount > 0) {
+        savedRange = selection.getRangeAt(0).cloneRange();
+      }
+
+      // Restore content
+      editorRef.current.innerHTML = nextContent;
+      historyIndexRef.current = newIndex;
+
+      // Restore selection if possible
+      if (savedRange && selection) {
+        try {
+          // Try to restore selection
+          const newRange = document.createRange();
+          const walker = document.createTreeWalker(
+            editorRef.current,
+            NodeFilter.SHOW_TEXT,
+            null
+          );
+
+          let node: Node | null = null;
+          let offset = 0;
+          let found = false;
+
+          // Try to find a similar position
+          if (savedRange.startContainer.nodeType === Node.TEXT_NODE) {
+            const textContent = savedRange.startContainer.textContent || '';
+            const startOffset = savedRange.startOffset;
+
+            // Find text node with similar content
+            while ((node = walker.nextNode())) {
+              if (node.textContent === textContent) {
+                offset = Math.min(startOffset, node.textContent.length);
+                found = true;
+                break;
+              }
+            }
+          }
+
+          if (found && node) {
+            newRange.setStart(node, offset);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } else {
+            // Fallback: place cursor at end
+            const range = document.createRange();
+            range.selectNodeContents(editorRef.current);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        } catch (err) {
+          // If restoration fails, just place cursor at end
+          const range = document.createRange();
+          range.selectNodeContents(editorRef.current);
+          range.collapse(false);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }
+
+      editorRef.current.focus();
+      handleContentChange();
+
+      // Reattach image handlers
+      attachImageResizeHandlers();
+
+      setTimeout(() => {
+        isUndoRedoRef.current = false;
+      }, 100);
+    }
+  }, [handleContentChange, attachImageResizeHandlers]);
 
   const handleToolbarClick = (button: ToolbarButton) => {
     if (disabled) return;
@@ -262,14 +637,13 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         execCommand('insertOrderedList');
         break;
       case 'undo':
-        execCommand('undo');
+        handleUndo();
         break;
       case 'redo':
-        execCommand('redo');
+        handleRedo();
         break;
       case 'fontSize':
         setShowBlockFormatDropdown(!showBlockFormatDropdown);
-        setShowFontSizeDropdown(false);
         setShowFontColorDropdown(false);
         break;
       case 'fontColor':
@@ -309,6 +683,11 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   };
 
   const insertTable = (rows: number, cols: number) => {
+    // Save state before inserting table
+    if (editorRef.current) {
+      saveToHistory();
+    }
+    
     const table = document.createElement('table');
     table.style.borderCollapse = 'collapse';
     table.style.width = '100%';
@@ -415,6 +794,10 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   };
 
   const insertImageToEditor = (imageSrc: string) => {
+    // Save state before inserting image
+    if (editorRef.current) {
+      saveToHistory();
+    }
     const img = document.createElement('img');
     img.src = imageSrc;
     // Set initial styles but allow resizing later
@@ -611,11 +994,6 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     fileInputRef.current?.click();
   };
 
-  const handleFontSizeSelect = (size: string) => {
-    execCommand('fontSize', size);
-    setShowFontSizeDropdown(false);
-    setFontSizeUpdateTrigger(prev => prev + 1);
-  };
 
   const handleDecreaseFontSize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -669,6 +1047,9 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
   const handleBlockFormatSelect = (format: string) => {
     if (!editorRef.current) return;
+
+    // Save state before applying format
+    saveToHistory();
     
     // Set flag to prevent cleanup during format application
     isApplyingFormatRef.current = true;
@@ -691,124 +1072,181 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     const range = selection.getRangeAt(0);
     const newTag = format === 'paragraph' ? 'p' : format;
     
-    // Get all block elements within the selection using a simpler approach
-    const allBlocks: Element[] = [];
-    
-    // Find start block element
-    let startNode = range.startContainer;
-    if (startNode.nodeType === Node.TEXT_NODE) {
-      startNode = startNode.parentElement as Node;
-    }
-    
-    // Find end block element
-    let endNode = range.endContainer;
-    if (endNode.nodeType === Node.TEXT_NODE) {
-      endNode = endNode.parentElement as Node;
-    }
-    
-    // Find block element containing start
-    let startBlock: Element | null = null;
-    let current: Node | null = startNode;
-    while (current && current !== editorRef.current) {
-      const tagName = (current as Element).tagName?.toLowerCase();
-      if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'div', 'blockquote', 'li'].includes(tagName || '')) {
-        startBlock = current as Element;
-        break;
+    // Helper function to find the block element containing a node
+    const findBlockElement = (node: Node): Element | null => {
+      let currentNode: Node | null = node;
+      if (currentNode.nodeType === Node.TEXT_NODE) {
+        currentNode = currentNode.parentElement || currentNode;
       }
-      current = current.parentNode;
-    }
-    
-    // Find block element containing end
-    let endBlock: Element | null = null;
-    current = endNode;
-    while (current && current !== editorRef.current) {
-      const tagName = (current as Element).tagName?.toLowerCase();
+
+      while (currentNode && currentNode !== editorRef.current) {
+        if (currentNode.nodeType === Node.ELEMENT_NODE) {
+          const tagName = (currentNode as Element).tagName?.toLowerCase();
       if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'div', 'blockquote', 'li'].includes(tagName || '')) {
-        endBlock = current as Element;
-        break;
-      }
-      current = current.parentNode;
-    }
-    
-    if (startBlock && endBlock) {
-      // Get all block elements between start and end (inclusive)
-      const allBlockElements = editorRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, pre, div, blockquote, li');
-      
-      let foundStart = false;
-      allBlockElements.forEach((el) => {
-        if (el === startBlock) {
-          foundStart = true;
-        }
-        if (foundStart) {
-          allBlocks.push(el);
-          if (el === endBlock) {
-            return; // Stop after finding end block
+            return currentNode as Element;
           }
         }
-      });
-      
-      // If we didn't find them in order, try reverse
-      if (allBlocks.length === 0 || (allBlocks[0] !== startBlock && allBlocks[allBlocks.length - 1] !== endBlock)) {
-        allBlocks.length = 0;
-        let foundEnd = false;
-        const reversedElements = Array.from(allBlockElements).reverse();
-        reversedElements.forEach((el) => {
-          if (el === endBlock) {
-            foundEnd = true;
+        currentNode = currentNode.parentNode;
+      }
+      return null;
+    };
+
+    const isCollapsed = range.collapsed;
+
+    if (isCollapsed) {
+      // Case 1: Collapsed selection (cursor only) - format only the block containing cursor
+      const blockElement = findBlockElement(range.startContainer);
+
+      if (blockElement && blockElement !== editorRef.current && blockElement.parentNode) {
+        const newElement = document.createElement(newTag);
+        const children = Array.from(blockElement.childNodes);
+        children.forEach((child) => {
+          newElement.appendChild(child.cloneNode(true));
+        });
+
+        blockElement.parentNode.replaceChild(newElement, blockElement);
+
+        // Restore cursor position
+        try {
+          const newRange = document.createRange();
+          newRange.setStart(newElement, 0);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        } catch (err) {
+          const newRange = document.createRange();
+          newRange.setStart(newElement, 0);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
+      } else {
+        document.execCommand('formatBlock', false, newTag);
+      }
+    } else {
+      // Case 2: Non-collapsed selection - check if it spans multiple blocks
+      const startBlock = findBlockElement(range.startContainer);
+      const endBlock = findBlockElement(range.endContainer);
+
+      if (startBlock && endBlock && startBlock === endBlock) {
+        // Case 2a: Selection is within a single block - format only that block
+        if (startBlock !== editorRef.current && startBlock.parentNode) {
+          const newElement = document.createElement(newTag);
+          const children = Array.from(startBlock.childNodes);
+          children.forEach((child) => {
+            newElement.appendChild(child.cloneNode(true));
+          });
+
+          startBlock.parentNode.replaceChild(newElement, startBlock);
+
+          // Restore selection
+          try {
+            const newRange = document.createRange();
+            newRange.setStart(newElement, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } catch (err) {
+            const newRange = document.createRange();
+            newRange.setStart(newElement, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
           }
-          if (foundEnd) {
-            allBlocks.unshift(el);
-            if (el === startBlock) {
-              return;
+        } else {
+          document.execCommand('formatBlock', false, newTag);
+        }
+      } else if (startBlock && endBlock && startBlock !== endBlock) {
+        // Case 2b: Selection spans multiple blocks - format ALL blocks in the selection
+        // Get all direct children of editor that are block elements
+        const allBlocks: Element[] = [];
+        if (editorRef.current) {
+          const children = Array.from(editorRef.current.children);
+          children.forEach((child) => {
+            const tagName = child.tagName?.toLowerCase();
+            if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'div', 'blockquote', 'li'].includes(tagName || '')) {
+              allBlocks.push(child);
+            }
+          });
+        }
+
+        // Find which blocks are within the selection range
+        const blocksToFormat: Element[] = [];
+        allBlocks.forEach((block) => {
+          // Check if block intersects with the range
+          const blockRange = document.createRange();
+          try {
+            blockRange.selectNodeContents(block);
+            // Check if range intersects with block
+            if (range.intersectsNode(block) ||
+              (range.startContainer === block || range.endContainer === block) ||
+              (block.contains(range.startContainer) && block.contains(range.endContainer)) ||
+              (range.startContainer.nodeType === Node.TEXT_NODE &&
+                block.contains(range.startContainer.parentElement) &&
+                block.contains(range.endContainer.nodeType === Node.TEXT_NODE ? range.endContainer.parentElement : range.endContainer))) {
+              blocksToFormat.push(block);
+            }
+          } catch (err) {
+            // If we can't create range, check if block is between start and end
+            const startPos = Array.from(editorRef.current?.children || []).indexOf(startBlock);
+            const endPos = Array.from(editorRef.current?.children || []).indexOf(endBlock);
+            const blockPos = Array.from(editorRef.current?.children || []).indexOf(block);
+            if (startPos !== -1 && endPos !== -1 && blockPos !== -1) {
+              if (blockPos >= startPos && blockPos <= endPos) {
+                blocksToFormat.push(block);
+              }
             }
           }
         });
-      }
-    }
-    
-    // If still no blocks found, use the block containing selection
-    if (allBlocks.length === 0) {
-      const blockElement = startBlock || endBlock;
-      if (blockElement) {
-        allBlocks.push(blockElement);
-      }
-    }
-    
-    // Apply format to all blocks
-    if (allBlocks.length > 0) {
-      // Store references before replacing
-      const blocksToFormat = [...allBlocks];
-      
-      blocksToFormat.forEach((blockElement) => {
-        if (blockElement && blockElement !== editorRef.current && blockElement.parentNode) {
-          const newElement = document.createElement(newTag);
-          
-          // Copy all children
-          while (blockElement.firstChild) {
-            newElement.appendChild(blockElement.firstChild);
+
+        // If we couldn't find blocks by intersection, use a simpler approach:
+        // Find blocks between startBlock and endBlock
+        if (blocksToFormat.length === 0 && startBlock && endBlock) {
+          const startIndex = allBlocks.indexOf(startBlock);
+          const endIndex = allBlocks.indexOf(endBlock);
+          if (startIndex !== -1 && endIndex !== -1) {
+            const startIdx = Math.min(startIndex, endIndex);
+            const endIdx = Math.max(startIndex, endIndex);
+            for (let i = startIdx; i <= endIdx; i++) {
+              blocksToFormat.push(allBlocks[i]);
+            }
           }
-          
-          // Replace the old element
+        }
+
+        // Format all blocks found
+      blocksToFormat.forEach((blockElement) => {
+          if (blockElement !== editorRef.current && blockElement.parentNode) {
+          const newElement = document.createElement(newTag);
+            const children = Array.from(blockElement.childNodes);
+            children.forEach((child) => {
+              newElement.appendChild(child.cloneNode(true));
+            });
           blockElement.parentNode.replaceChild(newElement, blockElement);
         }
       });
       
-      // Restore selection
+        // Restore selection to start of first block
       if (blocksToFormat.length > 0) {
-        // Find the last formatted element
-        const allNewBlocks = editorRef.current.querySelectorAll(newTag);
-        if (allNewBlocks.length > 0) {
-          const lastNewBlock = allNewBlocks[allNewBlocks.length - 1];
+          try {
+            const firstBlock = blocksToFormat[0];
           const newRange = document.createRange();
-          newRange.selectNodeContents(lastNewBlock);
-          newRange.collapse(false);
+            newRange.setStart(firstBlock, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } catch (err) {
+            // Fallback
+            const newRange = document.createRange();
+            newRange.setStart(blocksToFormat[0], 0);
+            newRange.collapse(true);
           selection.removeAllRanges();
           selection.addRange(newRange);
         }
       }
     } else {
-      // Use execCommand as fallback
+        // Fallback: use execCommand
       document.execCommand('formatBlock', false, newTag);
+      }
     }
     
     setShowBlockFormatDropdown(false);
@@ -821,49 +1259,81 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     }, 200);
   };
 
-  const blockFormats = [
-    { value: 'paragraph', label: 'Paragraph', tag: 'p' },
-    { value: 'heading1', label: 'Heading 1', tag: 'h1' },
-    { value: 'heading2', label: 'Heading 2', tag: 'h2' },
-    { value: 'heading3', label: 'Heading 3', tag: 'h3' },
-    { value: 'heading4', label: 'Heading 4', tag: 'h4' },
-    { value: 'heading5', label: 'Heading 5', tag: 'h5' },
-    { value: 'heading6', label: 'Heading 6', tag: 'h6' },
-    { value: 'preformatted', label: 'Preformatted', tag: 'pre' }
-  ];
 
   const handleFontColorSelect = (color: string, e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
+
+    // Save state before applying color
+    if (editorRef.current) {
+      saveToHistory();
+    }
     
     // Set flag to prevent click outside handler from interfering
     isSelectingColorRef.current = true;
     
-    // Close dropdown immediately
+    if (!editorRef.current) {
+      isSelectingColorRef.current = false;
     setShowFontColorDropdown(false);
     setHoveredColor(null);
     setHoveredColorPosition(null);
-    
-    if (!editorRef.current) {
-      isSelectingColorRef.current = false;
       return;
     }
 
-    // Use requestAnimationFrame to ensure DOM updates are complete
-    requestAnimationFrame(() => {
+    // Save selection BEFORE closing dropdown
+    const selection = window.getSelection();
+    let savedRange: Range | null = null;
+
+    if (selection && selection.rangeCount > 0) {
+      savedRange = selection.getRangeAt(0).cloneRange();
+    }
+
+    // Close dropdown
+    setShowFontColorDropdown(false);
+    setHoveredColor(null);
+    setHoveredColorPosition(null);
+
       // Ensure editor has focus
-      if (editorRef.current) {
         editorRef.current.focus();
+
+    // Restore selection if we saved it
+    if (savedRange && selection) {
+      try {
+        selection.removeAllRanges();
+        selection.addRange(savedRange);
+      } catch (err) {
+        // Selection might be invalid, continue anyway
       }
-      
-      // Small delay to ensure focus is set
-      setTimeout(() => {
-        const selection = window.getSelection();
+    }
+
+    // Apply color immediately
+    requestAnimationFrame(() => {
+      const currentSelection = window.getSelection();
+
+      // If we have a saved range, use it; otherwise use current selection
+      let rangeToUse: Range | null = null;
+
+      if (savedRange) {
+        try {
+          if (currentSelection) {
+            currentSelection.removeAllRanges();
+            currentSelection.addRange(savedRange);
+          }
+          rangeToUse = savedRange;
+        } catch (err) {
+          // Fallback to current selection
+          if (currentSelection && currentSelection.rangeCount > 0) {
+            rangeToUse = currentSelection.getRangeAt(0);
+          }
+        }
+      } else if (currentSelection && currentSelection.rangeCount > 0) {
+        rangeToUse = currentSelection.getRangeAt(0);
+      }
         
         // If no selection or collapsed, use execCommand which will apply to future typing
-        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      if (!rangeToUse || rangeToUse.collapsed) {
           try {
             // execCommand will apply color to future typed text
             document.execCommand('foreColor', false, color);
@@ -879,19 +1349,20 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           } catch (err) {
             console.error('Error applying color:', err);
             // Fallback: wrap selection in span with color
-            const range = selection.getRangeAt(0);
-            if (!range.collapsed) {
+          try {
               const span = document.createElement('span');
               span.style.color = color;
               try {
-                range.surroundContents(span);
+              rangeToUse.surroundContents(span);
                 handleContentChange();
               } catch (e) {
-                const contents = range.extractContents();
+              const contents = rangeToUse.extractContents();
                 span.appendChild(contents);
-                range.insertNode(span);
+              rangeToUse.insertNode(span);
                 handleContentChange();
               }
+          } catch (fallbackErr) {
+            console.error('Fallback color application failed:', fallbackErr);
             }
           }
         }
@@ -900,128 +1371,103 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         setTimeout(() => {
           isSelectingColorRef.current = false;
         }, 100);
-      }, 50);
     });
   };
 
-  const handleAutomaticColor = () => {
-    // Remove color - set to default/inherit
-    if (!editorRef.current) return;
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
-    
-    const range = selection.getRangeAt(0);
-    const span = document.createElement('span');
-    span.style.color = 'inherit';
-    
-    try {
-      range.surroundContents(span);
-    } catch (e) {
-      const contents = range.extractContents();
-      span.appendChild(contents);
-      range.insertNode(span);
+
+  const handleRemoveColor = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
-    
-    handleContentChange();
-    setShowFontColorDropdown(false);
-  };
 
-  const handleNoColor = () => {
-    // Remove color styling
-    if (!editorRef.current) return;
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
-    
-    const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    let element = container.nodeType === Node.TEXT_NODE 
-      ? container.parentElement 
-      : container as Element;
-    
-    // Find element with color style
-    while (element && element !== editorRef.current) {
-      if ((element as HTMLElement).style.color) {
-        (element as HTMLElement).style.color = '';
-        break;
-      }
-      element = element.parentElement as Element;
+    // Save state before removing color
+    if (editorRef.current) {
+      saveToHistory();
     }
-    
-    handleContentChange();
+
+    // Set flag to prevent click outside handler from interfering
+    isSelectingColorRef.current = true;
+
+    if (!editorRef.current) {
+      isSelectingColorRef.current = false;
     setShowFontColorDropdown(false);
-  };
+      return;
+    }
 
-  // Color conversion functions
-  const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : null;
-  };
+    // Save selection BEFORE closing dropdown
+    const selection = window.getSelection();
+    let savedRange: Range | null = null;
 
-  const rgbToHsl = (r: number, g: number, b: number): { h: number; s: number; l: number } => {
-    r /= 255;
-    g /= 255;
-    b /= 255;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    let h = 0, s = 0;
-    const l = (max + min) / 2;
-
-    if (max !== min) {
-      const d = max - min;
-      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-      switch (max) {
-        case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-        case g: h = ((b - r) / d + 2) / 6; break;
-        case b: h = ((r - g) / d + 4) / 6; break;
+    if (selection && selection.rangeCount > 0) {
+      try {
+        savedRange = selection.getRangeAt(0).cloneRange();
+      } catch (err) {
+        // If cloning fails, try to get selection from editor
+        if (editorRef.current.contains(selection.anchorNode)) {
+          savedRange = selection.getRangeAt(0).cloneRange();
+        }
       }
     }
-    return { h: h * 360, s: s * 100, l: l * 100 };
+
+    // Close dropdown
+    setShowFontColorDropdown(false);
+    setHoveredColor(null);
+    setHoveredColorPosition(null);
+
+    // Ensure editor has focus
+    editorRef.current.focus();
+
+    // Set color to default (#000000)
+    requestAnimationFrame(() => {
+      const currentSelection = window.getSelection();
+
+      // Restore selection if we saved it
+      if (savedRange) {
+        try {
+          if (currentSelection) {
+            currentSelection.removeAllRanges();
+            currentSelection.addRange(savedRange);
+          }
+        } catch (err) {
+          // Selection might be invalid, try to get current selection
+          if (currentSelection && currentSelection.rangeCount > 0) {
+            savedRange = currentSelection.getRangeAt(0).cloneRange();
+          }
+        }
+      } else if (currentSelection && currentSelection.rangeCount > 0) {
+        savedRange = currentSelection.getRangeAt(0).cloneRange();
+      }
+
+      // Apply default color (#000000)
+      try {
+        if (savedRange && currentSelection) {
+          currentSelection.removeAllRanges();
+          currentSelection.addRange(savedRange);
+        }
+        document.execCommand('foreColor', false, '#000000');
+        handleContentChange();
+      } catch (err) {
+        console.error('Error setting default color:', err);
+      }
+
+      // Reset flag after a short delay
+      setTimeout(() => {
+        isSelectingColorRef.current = false;
+      }, 100);
+    });
   };
 
-  const hslToRgb = (h: number, s: number, l: number): { r: number; g: number; b: number } => {
-    h /= 360;
-    s /= 100;
-    l /= 100;
-    let r, g, b;
-
-    if (s === 0) {
-      r = g = b = l;
-    } else {
-      const hue2rgb = (p: number, q: number, t: number) => {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-      };
-
-      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
-      g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
-    }
-
-    return {
-      r: Math.round(r * 255),
-      g: Math.round(g * 255),
-      b: Math.round(b * 255)
-    };
-  };
-
-  const rgbToHex = (r: number, g: number, b: number): string => {
-    return '#' + [r, g, b].map(x => {
-      const hex = x.toString(16);
-      return hex.length === 1 ? '0' + hex : hex;
-    }).join('');
-  };
 
   const openColorPicker = (initialColor?: string) => {
+    // Save selection before opening color picker
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      savedColorPickerSelectionRef.current = selection.getRangeAt(0).cloneRange();
+    } else {
+      savedColorPickerSelectionRef.current = null;
+    }
+
     let color = initialColor;
     if (!color) {
       const currentColor = getCurrentFontColor();
@@ -1059,7 +1505,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     setShowFontColorDropdown(false);
   };
 
-  const updatePickerColor = (updates: Partial<typeof pickerColor>) => {
+  const updatePickerColor = (updates: Partial<PickerColor>) => {
     setPickerColor(prev => {
       const updated = { ...prev, ...updates };
       
@@ -1098,61 +1544,109 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   };
 
   const handleColorPickerSave = () => {
-    handleFontColorSelect(pickerColor.hex);
+    if (!editorRef.current) {
     setShowColorPicker(false);
+      return;
+    }
+
+    // Save state before applying color
+    saveToHistory();
+
+    // Set flag to prevent click outside handler from interfering
+    isSelectingColorRef.current = true;
+
+    // Close color picker
+    setShowColorPicker(false);
+
+    // Ensure editor has focus
+    editorRef.current.focus();
+
+    // Restore selection if we saved it
+    const selection = window.getSelection();
+    if (savedColorPickerSelectionRef.current && selection) {
+      try {
+        selection.removeAllRanges();
+        selection.addRange(savedColorPickerSelectionRef.current);
+      } catch (err) {
+        // Selection might be invalid, continue anyway
+      }
+    }
+
+    // Apply color immediately
+    requestAnimationFrame(() => {
+      const currentSelection = window.getSelection();
+
+      // If we have a saved range, use it; otherwise use current selection
+      let rangeToUse: Range | null = null;
+
+      if (savedColorPickerSelectionRef.current) {
+        try {
+          if (currentSelection) {
+            currentSelection.removeAllRanges();
+            currentSelection.addRange(savedColorPickerSelectionRef.current);
+          }
+          rangeToUse = savedColorPickerSelectionRef.current;
+        } catch (err) {
+          // Fallback to current selection
+          if (currentSelection && currentSelection.rangeCount > 0) {
+            rangeToUse = currentSelection.getRangeAt(0);
+          }
+        }
+      } else if (currentSelection && currentSelection.rangeCount > 0) {
+        rangeToUse = currentSelection.getRangeAt(0);
+      }
+
+      // If no selection or collapsed, use execCommand which will apply to future typing
+      if (!rangeToUse || rangeToUse.collapsed) {
+        try {
+          // execCommand will apply color to future typed text
+          document.execCommand('foreColor', false, pickerColor.hex);
+          handleContentChange();
+        } catch (err) {
+          console.error('Error applying color:', err);
+        }
+      } else {
+        // Use execCommand to apply color to selection
+        try {
+          document.execCommand('foreColor', false, pickerColor.hex);
+          handleContentChange();
+        } catch (err) {
+          console.error('Error applying color:', err);
+          // Fallback: wrap selection in span with color
+          try {
+            const span = document.createElement('span');
+            span.style.color = pickerColor.hex;
+            try {
+              rangeToUse.surroundContents(span);
+              handleContentChange();
+            } catch (e) {
+              const contents = rangeToUse.extractContents();
+              span.appendChild(contents);
+              rangeToUse.insertNode(span);
+              handleContentChange();
+            }
+          } catch (fallbackErr) {
+            console.error('Fallback color application failed:', fallbackErr);
+          }
+        }
+      }
+
+      // Clear saved selection
+      savedColorPickerSelectionRef.current = null;
+
+      // Reset flag after a short delay
+      setTimeout(() => {
+        isSelectingColorRef.current = false;
+      }, 100);
+    });
   };
 
   const handleColorPickerCancel = () => {
+    // Clear saved selection when canceling
+    savedColorPickerSelectionRef.current = null;
     setShowColorPicker(false);
   };
 
-  const fontSizes = [
-    { label: '8px', value: '1', displaySize: '8px' },
-    { label: '10px', value: '2', displaySize: '10px' },
-    { label: '12px', value: '3', displaySize: '12px' },
-    { label: '14px', value: '4', displaySize: '14px' },
-    { label: '16px', value: '5', displaySize: '16px' },
-    { label: '18px', value: '6', displaySize: '18px' },
-    { label: '24px', value: '7', displaySize: '24px' },
-    { label: '32px', value: '8', displaySize: '32px' },
-    { label: '48px', value: '9', displaySize: '48px' }
-  ];
-
-  const getCurrentFontSize = (): string | null => {
-    if (!editorRef.current) return null;
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return null;
-
-    const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    const element = container.nodeType === Node.TEXT_NODE
-      ? container.parentElement
-      : container as Element;
-
-    if (!element) return null;
-
-    // Check for font tag with size attribute
-    const fontTag = element.closest('font[size]');
-    if (fontTag) {
-      return fontTag.getAttribute('size');
-    }
-
-    // Check computed style
-    const computedStyle = window.getComputedStyle(element);
-    const fontSize = computedStyle.fontSize;
-
-    // Map pixel sizes to font size values
-    const pixelSize = parseFloat(fontSize);
-    if (pixelSize <= 10) return '2';
-    if (pixelSize <= 12) return '3';
-    if (pixelSize <= 14) return '4';
-    if (pixelSize <= 16) return '5';
-    if (pixelSize <= 18) return '6';
-    if (pixelSize <= 24) return '7';
-    if (pixelSize <= 32) return '8';
-    if (pixelSize <= 48) return '9';
-    return '5'; // default
-  };
 
   const getCurrentFontSizeInPixels = (): number => {
     if (!editorRef.current) return 16;
@@ -1184,7 +1678,16 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
   const applyFontSize = (sizeInPx: number) => {
     if (!editorRef.current) return;
-    
+
+    // Clear any pending history saves from handleContentChange to avoid conflicts
+    if (saveHistoryTimeoutRef.current) {
+      clearTimeout(saveHistoryTimeoutRef.current);
+      saveHistoryTimeoutRef.current = null;
+    }
+
+    // Save state before applying font size (immediately, no debounce)
+    saveToHistory();
+
     // Ensure editor has focus first
     editorRef.current.focus();
     
@@ -1199,6 +1702,13 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             (el as HTMLElement).style.fontSize = `${sizeInPx}px`;
           });
           setFontSizeUpdateTrigger(prev => prev + 1);
+          
+          // Save history immediately after font size change (no debounce)
+          // This ensures each font size change is saved separately for proper undo/redo
+          setTimeout(() => {
+            saveToHistory();
+          }, 10);
+          
           handleContentChange();
           editorRef.current?.focus();
         }
@@ -1265,8 +1775,15 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       document.execCommand('styleWithCSS', false, 'false');
       
       setFontSizeUpdateTrigger(prev => prev + 1);
-      handleContentChange();
       
+      // Save history immediately after font size change (no debounce)
+      // This ensures each font size change is saved separately for proper undo/redo
+      setTimeout(() => {
+        saveToHistory();
+      }, 10);
+      
+      handleContentChange();
+
       // Ensure focus is maintained
       editorRef.current.focus();
     } catch (e) {
@@ -1278,6 +1795,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           fontElements.forEach((el) => {
             (el as HTMLElement).style.fontSize = `${sizeInPx}px`;
           });
+          
+          // Save history immediately after font size change (no debounce)
+          // This ensures each font size change is saved separately for proper undo/redo
+          setTimeout(() => {
+            saveToHistory();
+          }, 10);
           
           // Try to restore selection
           try {
@@ -1341,340 +1864,52 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     return null;
   };
 
-  const fontColors = [
-    // Row 1: Greens
-    { label: 'Green', value: '#00CC00' },
-    { label: 'Light Green', value: '#90EE90' },
-    { label: 'Lime', value: '#00FF00' },
-    { label: 'Olive', value: '#808000' },
-    { label: 'Dark Green', value: '#006400' },
-    // Row 2: Yellows/Oranges
-    { label: 'Yellow', value: '#FFFF00' },
-    { label: 'Gold', value: '#FFD700' },
-    { label: 'Orange', value: '#FF6600' },
-    { label: 'Dark Orange', value: '#FF8C00' },
-    { label: 'Coral', value: '#FF7F50' },
-    // Row 3: Reds/Pinks
-    { label: 'Red', value: '#FF0000' },
-    { label: 'Crimson', value: '#DC143C' },
-    { label: 'Pink', value: '#FF00CC' },
-    { label: 'Hot Pink', value: '#FF69B4' },
-    { label: 'Salmon', value: '#FA8072' },
-    // Row 4: Purples/Blues
-    { label: 'Purple', value: '#6600CC' },
-    { label: 'Violet', value: '#8A2BE2' },
-    { label: 'Blue', value: '#0066FF' },
-    { label: 'Light Blue', value: '#87CEEB' },
-    { label: 'Navy', value: '#000080' },
-    // Row 5: Grayscale
-    { label: 'White', value: '#FFFFFF' },
-    { label: 'Light Gray', value: '#D3D3D3' },
-    { label: 'Gray', value: '#808080' },
-    { label: 'Dark Gray', value: '#333333' },
-    { label: 'Black', value: '#000000' }
-  ];
-
-  const renderToolbar = () => {
-    const buttons: React.ReactElement[] = [];
-
-    toolbar.forEach((item, index) => {
-      if (item === '|') {
-        buttons.push(<div key={`separator-${index}`} className="hh-toolbar-separator" />);
-        return;
-      }
-
-      const button = item as ToolbarButton;
-      const buttonConfig = getButtonConfig(button);
-
-      // Special handling for fontSize (block format) and fontColor dropdowns
-      if (button === 'fontSize') {
-        buttons.push(
-          <div key={button} className="hh-fontsize-controls">
-            <div className="hh-toolbar-dropdown-wrapper" ref={blockFormatDropdownRef}>
-              <button
-                type="button"
-                className={`hh-toolbar-button ${showBlockFormatDropdown ? 'hh-active' : ''}`}
-                onClick={() => handleToolbarClick(button)}
-                disabled={disabled}
-                title={buttonConfig.title}
-              >
-                {(() => {
-                  const currentFormat = getCurrentBlockFormat();
-                  const formatObj = blockFormats.find(f => f.value === currentFormat);
-                  return formatObj ? formatObj.label : 'Paragraph';
-                })()}
-                <span className="hh-dropdown-arrow">▼</span>
-              </button>
-              {showBlockFormatDropdown && (() => {
-                const currentFormat = getCurrentBlockFormat();
                 return (
-                  <div className="hh-toolbar-dropdown hh-blockformat-dropdown">
-                    {blockFormats.map((format) => {
-                      const isSelected = currentFormat === format.value;
-                      return (
-                        <div
-                          key={format.value}
-                          className={`hh-dropdown-item hh-blockformat-item ${isSelected ? 'hh-selected' : ''}`}
-                          onClick={() => handleBlockFormatSelect(format.tag)}
-                        >
-                          <span
-                            className="hh-blockformat-preview"
-                            style={{
-                              fontSize: format.value.startsWith('heading') 
-                                ? format.value === 'heading1' ? '2em' 
-                                : format.value === 'heading2' ? '1.5em'
-                                : format.value === 'heading3' ? '1.17em'
-                                : format.value === 'heading4' ? '1em'
-                                : format.value === 'heading5' ? '0.83em'
-                                : '0.67em'
-                                : '1em',
-                              fontWeight: format.value.startsWith('heading') ? 'bold' : 'normal',
-                              fontFamily: format.value === 'preformatted' ? 'monospace' : 'inherit'
-                            }}
-                          >
-                            {format.label}
-                          </span>
-                          {isSelected && (
-                            <span className="hh-checkmark">✓</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-            <button
-              type="button"
-              className="hh-toolbar-button hh-fontsize-btn"
-              onClick={handleDecreaseFontSize}
+    <>
+      <div className={`hh-rich-text-editor ${isFullscreen ? 'hh-fullscreen' : ''} ${disabled ? 'hh-disabled' : ''}`}>
+        <Toolbar
+          toolbar={toolbar}
               disabled={disabled}
-              title="Giảm kích thước font"
-            >
-              −
-            </button>
-            <div className="hh-fontsize-display" key={fontSizeUpdateTrigger}>
-              {getCurrentFontSizeLabel()}
-            </div>
-            <button
-              type="button"
-              className="hh-toolbar-button hh-fontsize-btn"
-              onClick={handleIncreaseFontSize}
-              disabled={disabled}
-              title="Tăng kích thước font"
-            >
-              +
-            </button>
-          </div>
-        );
-      } else if (button === 'fontColor') {
-        buttons.push(
-          <div key={button} className="hh-toolbar-dropdown-wrapper" ref={fontColorDropdownRef}>
-            <button
-              type="button"
-              className={`hh-toolbar-button ${showFontColorDropdown ? 'hh-active' : ''}`}
-              onClick={() => handleToolbarClick(button)}
-              disabled={disabled}
-              title={buttonConfig.title}
-            >
-              <span className="hh-color-icon" style={{ color: '#000000' }}>A</span>
-              <span className="hh-dropdown-arrow">▼</span>
-            </button>
-            {showFontColorDropdown && (() => {
-              const currentColor = getCurrentFontColor();
-              return (
-                <div 
-                  className="hh-toolbar-dropdown hh-color-dropdown"
-                  onMouseLeave={() => {
-                    setHoveredColor(null);
-                    setHoveredColorPosition(null);
-                  }}
-                >
-                  <div className="hh-color-grid">
-                    {fontColors.map((color) => {
-                      const isSelected = currentColor?.toUpperCase() === color.value.toUpperCase();
-                      return (
-                        <div
-                          key={color.value}
-                          className={`hh-color-swatch ${isSelected ? 'hh-selected' : ''} ${hoveredColor === color.value ? 'hh-hovered' : ''}`}
-                          style={{ backgroundColor: color.value }}
-                          onClick={(e) => handleFontColorSelect(color.value, e)}
-                          onMouseEnter={(e) => {
-                            setHoveredColor(color.value);
+          showBlockFormatDropdown={showBlockFormatDropdown}
+          fontSizeUpdateTrigger={fontSizeUpdateTrigger}
+          onToggleBlockFormat={() => setShowBlockFormatDropdown(!showBlockFormatDropdown)}
+          onBlockFormatSelect={handleBlockFormatSelect}
+          onDecreaseFontSize={handleDecreaseFontSize}
+          onIncreaseFontSize={handleIncreaseFontSize}
+          getCurrentBlockFormat={getCurrentBlockFormat}
+          getCurrentFontSizeLabel={getCurrentFontSizeLabel}
+          showFontColorDropdown={showFontColorDropdown}
+          currentColor={getCurrentFontColor()}
+          hoveredColor={hoveredColor}
+          onToggleFontColor={() => setShowFontColorDropdown(!showFontColorDropdown)}
+          onColorSelect={handleFontColorSelect}
+          onRemoveColor={handleRemoveColor}
+          onOpenColorPicker={() => openColorPicker(getCurrentFontColor() || undefined)}
+          onColorMouseEnter={(color, e) => {
+            setHoveredColor(color);
                             const rect = e.currentTarget.getBoundingClientRect();
-                            // Use viewport coordinates for fixed positioning
                             setHoveredColorPosition({
                               x: rect.left + rect.width / 2,
                               y: rect.top - 10
                             });
                           }}
-                          onMouseLeave={() => {
+          onColorMouseLeave={() => {
                             setHoveredColor(null);
                             setHoveredColorPosition(null);
                           }}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="hh-color-controls">
-                    <button
-                      type="button"
-                      className="hh-color-control-btn hh-automatic-btn"
-                      onClick={handleAutomaticColor}
-                      title="Automatic"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="hh-icon-svg" style={{ width: '14px', height: '14px' }}>
-                        <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" fill="white" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="hh-color-control-btn hh-no-color-btn"
-                      onClick={handleNoColor}
-                      title="No Color"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="hh-icon-svg" style={{ width: '14px', height: '14px' }}>
-                        <line x1="2" y1="2" x2="14" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="hh-color-control-btn hh-palette-btn"
-                      onClick={() => openColorPicker(currentColor || undefined)}
-                      title="More Colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="hh-icon-svg" style={{ width: '14px', height: '14px' }}>
-                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM2 8a6 6 0 0 1 6-6v12a6 6 0 0 1-6-6z" fill="currentColor" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        );
-      } else {
-        // Render icon - use SVG for undo/redo/align, text for others
-        const renderIcon = () => {
-          if (button === 'undo') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" className="hh-icon-svg">
-                <path d="M1152 640q128 0 245 48t208 139q91 91 139 208t48 245q0 133-50 249t-137 204-203 137-250 50v-128q106 0 199-40t162-110 110-163 41-199q0-106-40-199t-110-162-163-110-199-41H475l402 403-90 90-557-557 557-557 90 90-402 403h677z" />
-              </svg>
-            );
-          } else if (button === 'redo') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" className="hh-icon-svg" style={{ transform: 'scaleX(-1)' }}>
-                <path d="M1152 640q128 0 245 48t208 139q91 91 139 208t48 245q0 133-50 249t-137 204-203 137-250 50v-128q106 0 199-40t162-110 110-163 41-199q0-106-40-199t-110-162-163-110-199-41H475l402 403-90 90-557-557 557-557 90 90-402 403h677z" />
-              </svg>
-            );
-          } else if (button === 'alignLeft') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="hh-icon-svg">
-                <path d="M2 3h12v1.5H2V3zm0 3h9v1.5H2V6zm0 3h12v1.5H2V9zm0 3h8v1.5H2V12z" />
-              </svg>
-            );
-          } else if (button === 'alignCenter') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="hh-icon-svg">
-                <path d="M2 3h12v1.5H2V3zm1.5 3h9v1.5h-9V6zm0 3h12v1.5h-12V9zm1.5 3h9v1.5h-9V12z" />
-              </svg>
-            );
-          } else if (button === 'alignRight') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="hh-icon-svg">
-                <path d="M2 3h12v1.5H2V3zm3 3h9v1.5H5V6zm0 3h12v1.5H5V9zm4 3h8v1.5H9V12z" />
-              </svg>
-            );
-          } else if (button === 'alignJustify') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="hh-icon-svg">
-                <path d="M2 3h12v1.5H2V3zm0 3h12v1.5H2V6zm0 3h12v1.5H2V9zm0 3h12v1.5H2V12z" />
-              </svg>
-            );
-          } else if (button === 'link') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" className="hh-icon-svg">
-                <path d="M1536 768v128q76 0 145 17t123 56 84 99 32 148q0 66-25 124t-69 101-102 69-124 26h-512q-66 0-124-25t-101-69-69-102-26-124q0-87 31-147t85-99 122-56 146-18V768h-64q-93 0-174 35t-142 96-96 142-36 175q0 93 35 174t96 142 142 96 175 36h512q93 0 174-35t142-96 96-142 36-175q0-93-35-174t-96-142-142-96-175-36h-64zm-640 512v-128q76 0 145-17t123-56 84-99 32-148q0-66-25-124t-69-101-102-69-124-26H448q-66 0-124 25t-101 69-69 102-26 124q0 87 31 147t85 99 122 56 146 18v128h-64q-93 0-174-35t-142-96-96-142T0 832q0-93 35-174t96-142 142-96 175-36h512q93 0 174 35t142 96 96 142 36 175q0 93-35 174t-96 142-142 96-175 36h-64z" />
-              </svg>
-            );
-          } else if (button === 'image') {
-            return (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" className="hh-icon-svg">
-                <path d="M1792 1536H256V384h1536v1152zM384 512v486l352-352 448 447 192-191 288 287V512H384zm0 896h933L736 827l-352 351v230zm1280 0v-37l-288-288-102 101 225 224h165zm-192-640q-26 0-45-19t-19-45q0-26 19-45t45-19q26 0 45 19t19 45q0 26-19 45t-45 19zM2048 0v2048H0V0h2048zm-128 128H128v1792h1792V128z" />
-              </svg>
-            );
-          } else {
-            return buttonConfig.icon;
-          }
-        };
+          getCurrentFontColor={getCurrentFontColor}
+          onToolbarClick={handleToolbarClick}
+        />
 
-        buttons.push(
-          <button
-            key={button}
-            type="button"
-            className="hh-toolbar-button"
-            onClick={() => handleToolbarClick(button)}
+        <EditorContent
+          editorRef={editorRef}
+          showCodeView={showCodeView}
+          codeContent={codeContent}
+          onCodeContentChange={setCodeContent}
             disabled={disabled}
-            title={buttonConfig.title}
-          >
-            {renderIcon()}
-          </button>
-        );
-      }
-    });
-
-    return buttons;
-  };
-
-  const getButtonConfig = (button: ToolbarButton) => {
-    const configs: Record<ToolbarButton, { icon: string; title: string }> = {
-      bold: { icon: 'B', title: 'In đậm (Ctrl+B)' },
-      italic: { icon: 'I', title: 'In nghiêng (Ctrl+I)' },
-      underline: { icon: 'U', title: 'Gạch chân (Ctrl+U)' },
-      strike: { icon: 'S', title: 'Gạch ngang' },
-      fontSize: { icon: 'Aa', title: 'Kích thước font' },
-      fontColor: { icon: 'A', title: 'Màu chữ' },
-      backgroundColor: { icon: '▦', title: 'Màu nền' },
-      alignLeft: { icon: '⬅', title: 'Căn trái' },
-      alignCenter: { icon: '⬌', title: 'Căn giữa' },
-      alignRight: { icon: '➡', title: 'Căn phải' },
-      alignJustify: { icon: '⬌', title: 'Căn đều' },
-      unorderedList: { icon: '•', title: 'Danh sách không đánh số' },
-      orderedList: { icon: '1.', title: 'Danh sách đánh số' },
-      link: { icon: '🔗', title: 'Chèn liên kết' },
-      image: { icon: '🖼', title: 'Chèn hình ảnh' },
-      table: { icon: '⊞', title: 'Chèn bảng' },
-      undo: { icon: 'undo', title: 'Hoàn tác (Ctrl+Z)' },
-      redo: { icon: 'redo', title: 'Làm lại (Ctrl+Y)' },
-      codeView: { icon: '</>', title: 'Xem mã nguồn' },
-      fullscreen: { icon: '⛶', title: 'Toàn màn hình' }
-    };
-    return configs[button];
-  };
-
-  return (
-    <>
-      <div className={`hh-rich-text-editor ${isFullscreen ? 'hh-fullscreen' : ''} ${disabled ? 'hh-disabled' : ''}`}>
-        <div className="hh-toolbar">
-          {renderToolbar()}
-        </div>
-
-        <div style={{ position: 'relative' }}>
-          {showCodeView ? (
-            <textarea
-              className="hh-code-view"
-              value={codeContent}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCodeContent(e.target.value)}
-              style={{ height, width: '100%', padding: '10px', fontFamily: 'monospace' }}
-            />
-          ) : (
-            <div
-              ref={editorRef}
-              className="hh-editor-content"
-              contentEditable={!disabled}
+          height={height}
+          placeholder={placeholder}
               onInput={() => {
-                // Only cleanup headings if not applying format from dropdown
                 if (!isApplyingFormatRef.current) {
                   cleanupHeadings();
                 }
@@ -1818,23 +2053,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                   attachImageResizeHandlers();
                 }, 100);
               }}
-              style={{ height, minHeight: height }}
-              data-placeholder={placeholder}
-              suppressContentEditableWarning
-            />
-          )}
-          {selectedImage && !showCodeView && (
-            <div
-              ref={resizeHandleRef}
-              className="hh-image-resize-handle"
-              onMouseDown={handleResizeMouseDown}
-              style={{
-                position: 'absolute',
-                zIndex: 1000
-              }}
-            />
-          )}
-        </div>
+          selectedImage={selectedImage}
+          resizeHandleRef={resizeHandleRef}
+          onResizeMouseDown={handleResizeMouseDown}
+          isApplyingFormat={isApplyingFormatRef}
+          onAttachImageResizeHandlers={attachImageResizeHandlers}
+        />
       </div>
 
       {/* Color tooltip - rendered outside dropdown to prevent layout shift */}
@@ -1859,239 +2083,28 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         onChange={handleFileSelect}
       />
 
-      {/* Image Upload Modal */}
-      {showImageModal && (
-        <div className="hh-image-modal-overlay" onClick={() => !isUploading && setShowImageModal(false)}>
-          <div className="hh-image-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="hh-image-modal-header">
-              <h3>Chèn hình ảnh</h3>
-              <button
-                className="hh-image-modal-close"
-                onClick={() => !isUploading && setShowImageModal(false)}
-                disabled={isUploading}
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="hh-image-modal-body">
-              <div className="hh-image-upload-options">
-                <div className="hh-upload-option">
-                  <button
-                    className="hh-upload-button"
-                    onClick={handleOpenFileDialog}
-                    disabled={isUploading}
-                  >
-                    📁 Chọn file từ máy
-                  </button>
-                  <p className="hh-upload-hint">Chọn ảnh từ máy tính của bạn (JPG, PNG, GIF, max 10MB)</p>
-                </div>
-
-                <div className="hh-upload-divider">
-                  <span>HOẶC</span>
-                </div>
-
-                <div className="hh-upload-option">
-                  <input
-                    type="text"
-                    className="hh-image-url-input"
-                    placeholder="Nhập URL hình ảnh (https://...)"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleInsertImageFromUrl()}
-                    disabled={isUploading}
-                  />
-                  <button
-                    className="hh-insert-url-button"
-                    onClick={handleInsertImageFromUrl}
-                    disabled={isUploading || !imageUrl.trim()}
-                  >
-                    Chèn từ URL
-                  </button>
-                </div>
-              </div>
-
-              {isUploading && (
-                <div className="hh-upload-progress">
-                  <div className="hh-upload-spinner"></div>
-                  <p>Đang xử lý ảnh...</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ImageModal
+        show={showImageModal}
+        imageUrl={imageUrl}
+        isUploading={isUploading}
+        onClose={() => setShowImageModal(false)}
+        onImageUrlChange={setImageUrl}
+        onOpenFileDialog={handleOpenFileDialog}
+        onInsertFromUrl={handleInsertImageFromUrl}
+      />
 
       {showColorPicker && (
-        <div className="hh-color-picker-overlay" onClick={handleColorPickerCancel}>
-          <div className="hh-color-picker-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="hh-color-picker-header">
-              <h3>Color Picker</h3>
-              <button
-                className="hh-color-picker-close"
-                onClick={handleColorPickerCancel}
-                title="Close"
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="hh-color-picker-content">
-              <div className="hh-color-picker-left">
-                <div
-                  className="hh-color-picker-gradient"
-                  style={{
-                    background: `linear-gradient(to bottom, transparent, black), linear-gradient(to right, white, hsl(${pickerColor.h}, 100%, 50%))`
-                  }}
-                  onMouseDown={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const handleMove = (moveEvent: MouseEvent) => {
-                      const x = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
-                      const y = Math.max(0, Math.min(1, (moveEvent.clientY - rect.top) / rect.height));
-                      updatePickerColor({ s: x * 100, l: (1 - y) * 100 });
-                    };
-                    const handleUp = () => {
-                      document.removeEventListener('mousemove', handleMove);
-                      document.removeEventListener('mouseup', handleUp);
-                    };
-                    handleMove(e.nativeEvent);
-                    document.addEventListener('mousemove', handleMove);
-                    document.addEventListener('mouseup', handleUp);
-                  }}
-                >
-                  <div
-                    className="hh-color-picker-indicator"
-                    style={{
-                      left: `${pickerColor.s}%`,
-                      top: `${100 - pickerColor.l}%`
-                    }}
-                  />
-                </div>
-                
-                <div
-                  className="hh-color-picker-hue-slider"
-                  onMouseDown={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const handleMove = (moveEvent: MouseEvent) => {
-                      const y = Math.max(0, Math.min(1, (moveEvent.clientY - rect.top) / rect.height));
-                      updatePickerColor({ h: (1 - y) * 360 });
-                    };
-                    const handleUp = () => {
-                      document.removeEventListener('mousemove', handleMove);
-                      document.removeEventListener('mouseup', handleUp);
-                    };
-                    handleMove(e.nativeEvent);
-                    document.addEventListener('mousemove', handleMove);
-                    document.addEventListener('mouseup', handleUp);
-                  }}
-                >
-                  <div
-                    className="hh-color-picker-hue-indicator"
-                    style={{
-                      top: `${100 - (pickerColor.h / 360) * 100}%`
-                    }}
-                  />
-                </div>
-              </div>
-              
-              <div className="hh-color-picker-right">
-                <div className="hh-color-picker-inputs">
-                  <div className="hh-color-picker-input-group">
-                    <label>R</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="255"
-                      value={pickerColor.r}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        updatePickerColor({ r: Math.max(0, Math.min(255, val)) });
-                      }}
-                    />
-                  </div>
-                  <div className="hh-color-picker-input-group">
-                    <label>G</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="255"
-                      value={pickerColor.g}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        updatePickerColor({ g: Math.max(0, Math.min(255, val)) });
-                      }}
-                    />
-                  </div>
-                  <div className="hh-color-picker-input-group">
-                    <label>B</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="255"
-                      value={pickerColor.b}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        updatePickerColor({ b: Math.max(0, Math.min(255, val)) });
-                      }}
-                    />
-                  </div>
-                </div>
-                
-                <div className="hh-color-picker-hex">
-                  <label>#</label>
-                  <input
-                    type="text"
-                    value={pickerColor.hex.substring(1).toUpperCase()}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9A-Fa-f]/g, '').substring(0, 6);
-                      if (val.length === 6) {
-                        updatePickerColor({ hex: '#' + val });
-                      } else if (val.length > 0) {
-                        setPickerColor(prev => ({ ...prev, hex: '#' + val }));
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const val = e.target.value.replace(/[^0-9A-Fa-f]/g, '').substring(0, 6);
-                      if (val.length === 6) {
-                        updatePickerColor({ hex: '#' + val });
-                      } else {
-                        // Restore valid hex if invalid
-                        const currentHex = pickerColor.hex.substring(1).toUpperCase();
-                        e.target.value = currentHex;
-                      }
-                    }}
-                  />
-                </div>
-                
-                <div className="hh-color-picker-preview">
-                  <div
-                    className="hh-color-picker-preview-color"
-                    style={{ backgroundColor: pickerColor.hex }}
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div className="hh-color-picker-footer">
-              <button
-                className="hh-color-picker-cancel"
-                onClick={handleColorPickerCancel}
-              >
-                Cancel
-              </button>
-              <button
-                className="hh-color-picker-save"
-                onClick={handleColorPickerSave}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <ColorPicker
+          pickerColor={pickerColor}
+          onUpdateColor={updatePickerColor}
+          onSave={handleColorPickerSave}
+          onCancel={handleColorPickerCancel}
+        />
       )}
     </>
   );
 };
 
 export default AuroraEditor;
+
 
