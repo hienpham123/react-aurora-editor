@@ -1,34 +1,81 @@
 import React, { useRef } from 'react';
 import { BlockFormatDropdown } from './BlockFormatDropdown';
+import { FontSizeDropdown } from './FontSizeDropdown';
+import { FontFamilyDropdown } from './FontFamilyDropdown';
 import { blockFormats } from '../const/constants';
 import { DropdownArrowIcon } from '../icons/icons';
 
 interface FontSizeControlsProps {
   disabled: boolean;
   showBlockFormatDropdown: boolean;
+  showFontSizeDropdown: boolean;
+  showFontFamilyDropdown: boolean;
   onToggleBlockFormat: () => void;
+  onToggleFontSize: () => void;
+  onToggleFontFamily: () => void;
   onBlockFormatSelect: (tag: string) => void;
-  onDecreaseFontSize: (e: React.MouseEvent) => void;
-  onIncreaseFontSize: (e: React.MouseEvent) => void;
+  onFontSizeSelect: (size: number | null) => void;
+  onFontFamilySelect: (family: string | null) => void;
   getCurrentBlockFormat: () => string;
-  getCurrentFontSizeLabel: () => string;
+  getCurrentFontSize: () => number | null;
+  getCurrentFontFamily: () => string | null;
   fontSizeUpdateTrigger: number;
   blockFormatUpdateTrigger: number;
+  fontFamilyUpdateTrigger: number;
 }
 
 export const FontSizeControls: React.FC<FontSizeControlsProps> = ({
   disabled,
   showBlockFormatDropdown,
+  showFontSizeDropdown,
+  showFontFamilyDropdown,
   onToggleBlockFormat,
+  onToggleFontSize,
+  onToggleFontFamily,
   onBlockFormatSelect,
-  onDecreaseFontSize,
-  onIncreaseFontSize,
+  onFontSizeSelect,
+  onFontFamilySelect,
   getCurrentBlockFormat,
-  getCurrentFontSizeLabel,
+  getCurrentFontSize,
+  getCurrentFontFamily,
   fontSizeUpdateTrigger,
-  blockFormatUpdateTrigger
+  blockFormatUpdateTrigger,
+  fontFamilyUpdateTrigger
 }) => {
   const blockFormatDropdownRef = useRef<HTMLDivElement>(null);
+  const fontSizeDropdownRef = useRef<HTMLDivElement>(null);
+  const fontFamilyDropdownRef = useRef<HTMLDivElement>(null);
+
+  const getBlockFormatLabel = () => {
+    const currentFormat = getCurrentBlockFormat();
+    const formatObj = blockFormats.find(f => f.value === currentFormat);
+    if (formatObj) {
+      // Show "Normal (...)" when "Normal (DIV)" is selected
+      if (formatObj.value === 'normal') {
+        return 'Normal (...)';
+      }
+      return formatObj.label;
+    }
+    return 'Paragraph';
+  };
+
+  const getFontSizeLabel = () => {
+    const currentSize = getCurrentFontSize();
+    if (currentSize === null) {
+      return '(Default)';
+    }
+    return `${currentSize}px`;
+  };
+
+  const getFontFamilyLabel = () => {
+    const currentFamily = getCurrentFontFamily();
+    if (currentFamily === null) {
+      return '(Default)';
+    }
+    // Extract the first font name from the font-family value
+    const firstFont = currentFamily.split(',')[0].trim();
+    return firstFont;
+  };
 
   return (
     <div className="hh-fontsize-controls">
@@ -45,14 +92,10 @@ export const FontSizeControls: React.FC<FontSizeControlsProps> = ({
             onToggleBlockFormat();
           }}
           disabled={disabled}
-          title="Kích thước font"
+          title="Block format"
         >
-          {(() => {
-            const currentFormat = getCurrentBlockFormat();
-            const formatObj = blockFormats.find(f => f.value === currentFormat);
-            return formatObj ? formatObj.label : 'Paragraph';
-          })()}
-          <DropdownArrowIcon height={10} width={10}/>
+          {getBlockFormatLabel()}
+          <DropdownArrowIcon height={10} width={10} />
         </button>
         {showBlockFormatDropdown && (
           <BlockFormatDropdown
@@ -62,27 +105,56 @@ export const FontSizeControls: React.FC<FontSizeControlsProps> = ({
           />
         )}
       </div>
-      <button
-        type="button"
-        className="hh-toolbar-button hh-fontsize-btn"
-        onClick={onDecreaseFontSize}
-        disabled={disabled}
-        title="Giảm kích thước font"
-      >
-        −
-      </button>
-      <div className="hh-fontsize-display" key={fontSizeUpdateTrigger}>
-        {getCurrentFontSizeLabel()}
+      <div className="hh-toolbar-dropdown-wrapper" ref={fontSizeDropdownRef}>
+        <button
+          type="button"
+          className={`hh-toolbar-button ${showFontSizeDropdown ? 'hh-active' : ''}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            getCurrentFontSize();
+            onToggleFontSize();
+          }}
+          disabled={disabled}
+          title="Font size"
+        >
+          {getFontSizeLabel()}
+          <DropdownArrowIcon height={10} width={10} />
+        </button>
+        {showFontSizeDropdown && (
+          <FontSizeDropdown
+            key={fontSizeUpdateTrigger}
+            currentSize={getCurrentFontSize()}
+            onSelect={onFontSizeSelect}
+          />
+        )}
       </div>
-      <button
-        type="button"
-        className="hh-toolbar-button hh-fontsize-btn"
-        onClick={onIncreaseFontSize}
-        disabled={disabled}
-        title="Tăng kích thước font"
-      >
-        +
-      </button>
+      <div className="hh-toolbar-dropdown-wrapper" ref={fontFamilyDropdownRef}>
+        <button
+          type="button"
+          className={`hh-toolbar-button ${showFontFamilyDropdown ? 'hh-active' : ''}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            getCurrentFontFamily();
+            onToggleFontFamily();
+          }}
+          disabled={disabled}
+          title="Font family"
+        >
+          <span style={{ fontFamily: getCurrentFontFamily() || 'inherit' }}>
+            {getFontFamilyLabel()}
+          </span>
+          <DropdownArrowIcon height={10} width={10} />
+        </button>
+        {showFontFamilyDropdown && (
+          <FontFamilyDropdown
+            key={fontFamilyUpdateTrigger}
+            currentFamily={getCurrentFontFamily()}
+            onSelect={onFontFamilySelect}
+          />
+        )}
+      </div>
     </div>
   );
 };

@@ -14,14 +14,20 @@ interface ToolbarProps {
   disabled: boolean;
   // FontSize controls
   showBlockFormatDropdown: boolean;
+  showFontSizeDropdown: boolean;
+  showFontFamilyDropdown: boolean;
   fontSizeUpdateTrigger: number;
+  fontFamilyUpdateTrigger: number;
   blockFormatUpdateTrigger: number;
   onToggleBlockFormat: () => void;
+  onToggleFontSize: () => void;
+  onToggleFontFamily: () => void;
   onBlockFormatSelect: (tag: string) => void;
-  onDecreaseFontSize: (e: React.MouseEvent) => void;
-  onIncreaseFontSize: (e: React.MouseEvent) => void;
+  onFontSizeSelect: (size: number | null) => void;
+  onFontFamilySelect: (family: string | null) => void;
   getCurrentBlockFormat: () => string;
-  getCurrentFontSizeLabel: () => string;
+  getCurrentFontSize: () => number | null;
+  getCurrentFontFamily: () => string | null;
   // FontColor controls
   showFontColorDropdown: boolean;
   currentColor: string | null;
@@ -32,7 +38,16 @@ interface ToolbarProps {
   onOpenColorPicker: () => void;
   onColorMouseEnter: (color: string, e: React.MouseEvent) => void;
   onColorMouseLeave: () => void;
-  getCurrentFontColor: () => string | null;
+  // BackgroundColor controls
+  showBackgroundColorDropdown: boolean;
+  currentBackgroundColor: string | null;
+  hoveredBackgroundColor: string | null;
+  onToggleBackgroundColor: () => void;
+  onBackgroundColorSelect: (color: string, e: React.MouseEvent) => void;
+  onRemoveBackgroundColor: (e: React.MouseEvent) => void;
+  onOpenBackgroundColorPicker: () => void;
+  onBackgroundColorMouseEnter: (color: string, e: React.MouseEvent) => void;
+  onBackgroundColorMouseLeave: () => void;
   // Alignment controls
   showAlignmentDropdown: boolean;
   onToggleAlignment: () => void;
@@ -58,14 +73,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   toolbar,
   disabled,
   showBlockFormatDropdown,
+  showFontSizeDropdown,
+  showFontFamilyDropdown,
   fontSizeUpdateTrigger,
+  fontFamilyUpdateTrigger,
   blockFormatUpdateTrigger,
   onToggleBlockFormat,
+  onToggleFontSize,
+  onToggleFontFamily,
   onBlockFormatSelect,
-  onDecreaseFontSize,
-  onIncreaseFontSize,
+  onFontSizeSelect,
+  onFontFamilySelect,
   getCurrentBlockFormat,
-  getCurrentFontSizeLabel,
+  getCurrentFontSize,
+  getCurrentFontFamily,
   showFontColorDropdown,
   currentColor,
   hoveredColor,
@@ -75,7 +96,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onOpenColorPicker,
   onColorMouseEnter,
   onColorMouseLeave,
-  getCurrentFontColor,
+  showBackgroundColorDropdown,
+  currentBackgroundColor,
+  hoveredBackgroundColor,
+  onToggleBackgroundColor,
+  onBackgroundColorSelect,
+  onRemoveBackgroundColor,
+  onOpenBackgroundColorPicker,
+  onBackgroundColorMouseEnter,
+  onBackgroundColorMouseLeave,
   showAlignmentDropdown,
   onToggleAlignment,
   onAlignmentSelect,
@@ -89,10 +118,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onBulletStyleSelect,
   getCurrentBulletStyle,
   onToolbarClick,
-  getButtonActiveState,
-  buttonStateUpdateTrigger
+  getButtonActiveState
 }) => {
   const fontColorDropdownRef = useRef<HTMLDivElement>(null);
+  const backgroundColorDropdownRef = useRef<HTMLDivElement>(null);
   const alignmentDropdownRef = useRef<HTMLDivElement>(null);
   const listStyleDropdownRef = useRef<HTMLDivElement>(null);
   const bulletStyleDropdownRef = useRef<HTMLDivElement>(null);
@@ -113,14 +142,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           key={button}
           disabled={disabled}
           showBlockFormatDropdown={showBlockFormatDropdown}
+          showFontSizeDropdown={showFontSizeDropdown}
+          showFontFamilyDropdown={showFontFamilyDropdown}
           onToggleBlockFormat={onToggleBlockFormat}
+          onToggleFontSize={onToggleFontSize}
+          onToggleFontFamily={onToggleFontFamily}
           onBlockFormatSelect={onBlockFormatSelect}
-          onDecreaseFontSize={onDecreaseFontSize}
-          onIncreaseFontSize={onIncreaseFontSize}
+          onFontSizeSelect={onFontSizeSelect}
+          onFontFamilySelect={onFontFamilySelect}
           getCurrentBlockFormat={getCurrentBlockFormat}
-          getCurrentFontSizeLabel={getCurrentFontSizeLabel}
+          getCurrentFontSize={getCurrentFontSize}
+          getCurrentFontFamily={getCurrentFontFamily}
           fontSizeUpdateTrigger={fontSizeUpdateTrigger}
           blockFormatUpdateTrigger={blockFormatUpdateTrigger}
+          fontFamilyUpdateTrigger={fontFamilyUpdateTrigger}
         />
       );
     } else if (button === 'fontColor') {
@@ -138,7 +173,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             title="Màu chữ"
           >
             <div className="hh-color-button-content">
-              <span className="hh-color-icon" style={{ color: '#000000' }}>A</span>
+              <span className="hh-color-icon" style={{ color: currentColor || '#000000' }}>A</span>
               <span
                 className="hh-color-indicator"
                 style={{
@@ -159,6 +194,52 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               onOpenColorPicker={onOpenColorPicker}
               onMouseEnter={onColorMouseEnter}
               onMouseLeave={onColorMouseLeave}
+            />
+          )}
+        </div>
+      );
+    } else if (button === 'backgroundColor') {
+      buttons.push(
+        <div key={button} className="hh-toolbar-dropdown-wrapper" ref={backgroundColorDropdownRef}>
+          <button
+            type="button"
+            className={`hh-toolbar-button ${showBackgroundColorDropdown ? 'hh-active' : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleBackgroundColor();
+            }}
+            disabled={disabled}
+            title="Màu nền"
+          >
+            <div className="hh-color-button-content">
+              <span className="hh-color-icon" style={{ 
+                color: currentBackgroundColor ? '#FFFFFF' : '#000000',
+                backgroundColor: currentBackgroundColor || 'transparent',
+                border: currentBackgroundColor ? '1px solid rgba(0,0,0,0.1)' : 'none',
+                borderRadius: '2px',
+                padding: '1px 2px'
+              }}>A</span>
+              <span
+                className="hh-color-indicator"
+                style={{
+                  backgroundColor: currentBackgroundColor || '#FFFFFF',
+                  borderColor: currentBackgroundColor || '#FFFFFF'
+                }}
+              />
+            </div>
+            <DropdownArrowIcon width={10} height={10} />
+          </button>
+          {showBackgroundColorDropdown && (
+            <ColorDropdown
+              currentColor={currentBackgroundColor}
+              fontColors={fontColors}
+              hoveredColor={hoveredBackgroundColor}
+              onColorSelect={onBackgroundColorSelect}
+              onRemoveColor={onRemoveBackgroundColor}
+              onOpenColorPicker={onOpenBackgroundColorPicker}
+              onMouseEnter={onBackgroundColorMouseEnter}
+              onMouseLeave={onBackgroundColorMouseLeave}
             />
           )}
         </div>

@@ -46,6 +46,9 @@ export const fontColors: ColorOption[] = [
 
 export const blockFormats: BlockFormat[] = [
   { value: 'paragraph', label: 'Paragraph', tag: 'p' },
+  { value: 'normal', label: 'Normal (DIV)', tag: 'div' },
+  { value: 'quote', label: 'Quote', tag: 'blockquote' },
+  { value: 'code', label: 'Code', tag: 'pre' },
   { value: 'heading1', label: 'Heading 1', tag: 'h1' },
   { value: 'heading2', label: 'Heading 2', tag: 'h2' },
   { value: 'heading3', label: 'Heading 3', tag: 'h3' },
@@ -53,6 +56,51 @@ export const blockFormats: BlockFormat[] = [
   { value: 'heading5', label: 'Heading 5', tag: 'h5' },
   { value: 'heading6', label: 'Heading 6', tag: 'h6' },
   { value: 'preformatted', label: 'Preformatted', tag: 'pre' }
+];
+
+export interface FontSizeOption {
+  label: string;
+  value: number | null; // null means default
+}
+
+export const fontSizes: FontSizeOption[] = [
+  { label: '(Default)', value: null },
+  { label: '8', value: 8 },
+  { label: '9', value: 9 },
+  { label: '10', value: 10 },
+  { label: '11', value: 11 },
+  { label: '12', value: 12 },
+  { label: '13', value: 13 },
+  { label: '14', value: 14 },
+  { label: '16', value: 16 },
+  { label: '18', value: 18 },
+  { label: '20', value: 20 },
+  { label: '24', value: 24 },
+  { label: '28', value: 28 },
+  { label: '32', value: 32 },
+  { label: '36', value: 36 },
+  { label: '48', value: 48 },
+  { label: '72', value: 72 }
+];
+
+export interface FontFamilyOption {
+  label: string;
+  value: string | null; // null means default
+}
+
+export const fontFamilies: FontFamilyOption[] = [
+  { label: '(Default)', value: null },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Comic Sans MS', value: 'Comic Sans MS, cursive' },
+  { label: 'Courier New', value: 'Courier New, monospace' },
+  { label: 'Impact', value: 'Impact, fantasy' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Tahoma', value: 'Tahoma, sans-serif' },
+  { label: 'Trebuchet MS', value: 'Trebuchet MS, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, sans-serif' },
+  { label: 'Times New Roman', value: 'Times New Roman, serif' },
+  { label: 'Helvetica', value: 'Helvetica, sans-serif' },
+  { label: 'Lucida Console', value: 'Lucida Console, monospace' }
 ];
 
 export interface AlignmentOption {

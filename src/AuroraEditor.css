@@ -223,12 +223,36 @@
 
 .hh-fontsize-dropdown {
   min-width: 180px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.hh-fontsize-item {
+  padding: 8px 16px;
 }
 
 .hh-fontsize-preview {
   font-weight: 500;
   line-height: 1.4;
   flex: 1;
+  display: block;
+}
+
+.hh-fontfamily-dropdown {
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.hh-fontfamily-item {
+  padding: 8px 16px;
+}
+
+.hh-fontfamily-preview {
+  font-weight: 500;
+  line-height: 1.4;
+  flex: 1;
+  display: block;
 }
 
 /* Alignment Dropdown */

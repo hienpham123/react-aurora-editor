@@ -36,7 +36,13 @@ export const BlockFormatDropdown: React.FC<BlockFormatDropdownProps> = ({
                             : '0.67em'
                   : '1em',
                 fontWeight: format.value.startsWith('heading') ? 'bold' : 'normal',
-                fontFamily: format.value === 'preformatted' ? 'monospace' : 'inherit'
+                fontFamily: (format.value === 'preformatted' || format.value === 'code') ? 'monospace' : 'inherit',
+                fontStyle: format.value === 'quote' ? 'italic' : 'normal',
+                borderLeft: format.value === 'quote' ? '3px solid #ccc' : 'none',
+                paddingLeft: format.value === 'quote' ? '10px' : '0',
+                backgroundColor: format.value === 'code' ? '#f5f5f5' : 'transparent',
+                padding: format.value === 'code' ? '2px 4px' : '0',
+                borderRadius: format.value === 'code' ? '3px' : '0'
               }}
             >
               {format.label}

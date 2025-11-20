@@ -58,7 +58,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     '|',
     'link', 'image', 'table',
     '|',
-    'codeView', 'fullscreen'
+    // 'codeView', 'fullscreen'
   ] as (ToolbarButton | '|')[])
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -77,16 +77,23 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   const [imageAlignment, setImageAlignment] = useState('inline');
   const [showBlockFormatDropdown, setShowBlockFormatDropdown] = useState(false);
   const [showFontColorDropdown, setShowFontColorDropdown] = useState(false);
+  const [showBackgroundColorDropdown, setShowBackgroundColorDropdown] = useState(false);
   const [showAlignmentDropdown, setShowAlignmentDropdown] = useState(false);
   const [showListStyleDropdown, setShowListStyleDropdown] = useState(false);
   const [showBulletStyleDropdown, setShowBulletStyleDropdown] = useState(false);
+  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
+  const [showFontFamilyDropdown, setShowFontFamilyDropdown] = useState(false);
   const [fontSizeUpdateTrigger, setFontSizeUpdateTrigger] = useState(0);
+  const [fontFamilyUpdateTrigger, setFontFamilyUpdateTrigger] = useState(0);
   const [buttonStateUpdateTrigger, setButtonStateUpdateTrigger] = useState(0);
   const [blockFormatUpdateTrigger, setBlockFormatUpdateTrigger] = useState(0);
   const isApplyingFormatRef = useRef(false);
   const [hoveredColor, setHoveredColor] = useState<string | null>(null);
   const [hoveredColorPosition, setHoveredColorPosition] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredBackgroundColor, setHoveredBackgroundColor] = useState<string | null>(null);
+  const [hoveredBackgroundColorPosition, setHoveredBackgroundColorPosition] = useState<{ x: number; y: number } | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [colorPickerForBackground, setColorPickerForBackground] = useState(false);
   const [pickerColor, setPickerColor] = useState({ h: 240, s: 100, l: 50, r: 35, g: 52, b: 119, hex: '#233477' });
   const isSelectingColorRef = useRef(false);
   const savedColorPickerSelectionRef = useRef<Range | null>(null);
@@ -107,7 +114,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     const img = target.tagName === 'IMG' ? target as HTMLImageElement : target.closest('img') as HTMLImageElement;
 
     if (img && editorRef.current) {
-        e.stopPropagation();
+      e.stopPropagation();
 
       // Optimized: Only update if image changed (avoid unnecessary DOM operations)
       if (selectedImage !== img) {
@@ -176,9 +183,9 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         const currentContent = editorRef.current.innerHTML;
         // Only update if content is significantly different (not just from typing)
         // This allows external updates but prevents cursor jump during typing
-        if (Math.abs(currentContent.length - value.length) > 10 || 
-            !currentContent.includes(value.substring(0, Math.min(50, value.length))) &&
-            !value.includes(currentContent.substring(0, Math.min(50, currentContent.length)))) {
+        if (Math.abs(currentContent.length - value.length) > 10 ||
+          !currentContent.includes(value.substring(0, Math.min(50, value.length))) &&
+          !value.includes(currentContent.substring(0, Math.min(50, currentContent.length)))) {
           // Content is significantly different, likely external update
           isUndoRedoRef.current = true;
           // Save selection before updating
@@ -187,9 +194,9 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           if (selection && selection.rangeCount > 0) {
             savedRange = selection.getRangeAt(0).cloneRange();
           }
-          
-      editorRef.current.innerHTML = value;
-          
+
+          editorRef.current.innerHTML = value;
+
           // Restore selection if possible
           if (savedRange && selection) {
             try {
@@ -199,16 +206,16 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
               // Selection might be invalid, ignore
             }
           }
-          
-      const timeoutId = setTimeout(() => {
+
+          const timeoutId = setTimeout(() => {
             isUndoRedoRef.current = false;
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
+          }, 100);
+          return () => clearTimeout(timeoutId);
+        }
         // Content is similar, likely from typing, don't update to avoid cursor jump
         return;
       }
-      
+
       // Editor is not focused, safe to update
       isUndoRedoRef.current = true;
       editorRef.current.innerHTML = value;
@@ -274,7 +281,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     }
 
     onChangeTimeoutRef.current = setTimeout(() => {
-    if (editorRef.current && onChange) {
+      if (editorRef.current && onChange) {
         const content = editorRef.current.innerHTML;
         // Only call onChange if content actually changed
         if (content !== lastContentRef.current) {
@@ -356,8 +363,8 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       const childNodes = Array.from(tempDiv.childNodes);
 
       childNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const element = node as Element;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element;
           const tagName = element.tagName.toLowerCase();
 
           // If it's already a paragraph, use it
@@ -437,7 +444,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     };
 
     editorRef.current.addEventListener('click', handleEditorClick, true); // Use capture phase
-    
+
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
       // Don't deselect if clicking on resize handle
@@ -459,7 +466,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       // Check if click is inside toolbar
       const toolbar = document.querySelector('.hh-toolbar');
       const isClickInToolbar = toolbar ? toolbar.contains(target) : false;
-      
+
       // Check if click is inside editor content (but not toolbar)
       const isClickInEditor = editorRef.current && editorRef.current.contains(target) && !isClickInToolbar;
 
@@ -606,7 +613,79 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           }
         }
       }
-      
+
+      // Close font size dropdown if clicking outside
+      if (showFontSizeDropdown) {
+        if (!isClickInToolbar && !isClickInEditor) {
+          // Click outside toolbar and editor, definitely close
+          setShowFontSizeDropdown(false);
+        } else if (isClickInEditor) {
+          // Click in editor content, close dropdown
+          setShowFontSizeDropdown(false);
+        } else {
+          // Click in toolbar, check if it's on the font size dropdown or its button
+          const fontSizeDropdown = document.querySelector('.hh-fontsize-dropdown');
+          const isClickInFontSizeDropdown = fontSizeDropdown ? fontSizeDropdown.contains(target) : false;
+
+          if (!isClickInFontSizeDropdown) {
+            // Check if click is on the button by traversing up
+            let isClickOnButton = false;
+            if (target instanceof Element) {
+              let current: Element | null = target;
+              while (current && current !== toolbar) {
+                if (current.classList && current.classList.contains('hh-toolbar-dropdown-wrapper')) {
+                  if (current.querySelector('.hh-fontsize-dropdown')) {
+                    isClickOnButton = true;
+                    break;
+                  }
+                }
+                current = current.parentElement;
+              }
+            }
+
+            if (!isClickOnButton) {
+              setShowFontSizeDropdown(false);
+            }
+          }
+        }
+      }
+
+      // Close font family dropdown if clicking outside
+      if (showFontFamilyDropdown) {
+        if (!isClickInToolbar && !isClickInEditor) {
+          // Click outside toolbar and editor, definitely close
+          setShowFontFamilyDropdown(false);
+        } else if (isClickInEditor) {
+          // Click in editor content, close dropdown
+          setShowFontFamilyDropdown(false);
+        } else {
+          // Click in toolbar, check if it's on the font family dropdown or its button
+          const fontFamilyDropdown = document.querySelector('.hh-fontfamily-dropdown');
+          const isClickInFontFamilyDropdown = fontFamilyDropdown ? fontFamilyDropdown.contains(target) : false;
+
+          if (!isClickInFontFamilyDropdown) {
+            // Check if click is on the button by traversing up
+            let isClickOnButton = false;
+            if (target instanceof Element) {
+              let current: Element | null = target;
+              while (current && current !== toolbar) {
+                if (current.classList && current.classList.contains('hh-toolbar-dropdown-wrapper')) {
+                  if (current.querySelector('.hh-fontfamily-dropdown')) {
+                    isClickOnButton = true;
+                    break;
+                  }
+                }
+                current = current.parentElement;
+              }
+            }
+
+            if (!isClickOnButton) {
+              setShowFontFamilyDropdown(false);
+            }
+          }
+        }
+      }
+
       // Close font color dropdown if clicking outside (but not when selecting a color)
       if (!isSelectingColorRef.current && showFontColorDropdown) {
         if (!isClickInToolbar) {
@@ -626,7 +705,9 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
               let current: Element | null = target;
               while (current && current !== toolbar) {
                 if (current.classList && current.classList.contains('hh-toolbar-dropdown-wrapper')) {
-                  if (current.querySelector('.hh-color-dropdown')) {
+                  // Check if it's font color button (has .hh-color-icon with 'A')
+                  const colorIcon = current.querySelector('.hh-color-icon');
+                  if (colorIcon && colorIcon.textContent === 'A') {
                     isClickOnButton = true;
                     break;
                   }
@@ -643,13 +724,56 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           }
         }
       }
-      
+
+      // Close background color dropdown if clicking outside (but not when selecting a color)
+      if (!isSelectingColorRef.current && showBackgroundColorDropdown) {
+        if (!isClickInToolbar) {
+          // Click outside toolbar, definitely close
+          setShowBackgroundColorDropdown(false);
+          setHoveredBackgroundColor(null);
+          setHoveredBackgroundColorPosition(null);
+        } else {
+          // Click in toolbar, check if it's on the background color dropdown or its button
+          const colorDropdown = document.querySelector('.hh-color-dropdown');
+          const isClickInColorDropdown = colorDropdown ? colorDropdown.contains(target) : false;
+
+          if (!isClickInColorDropdown) {
+            // Check if click is on the button by traversing up
+            let isClickOnButton = false;
+            if (target instanceof Element) {
+              let current: Element | null = target;
+              while (current && current !== toolbar) {
+                if (current.classList && current.classList.contains('hh-toolbar-dropdown-wrapper')) {
+                  // Check if it's background color button (has .hh-color-icon with 'A' and backgroundColor style)
+                  const colorIcon = current.querySelector('.hh-color-icon');
+                  if (colorIcon && colorIcon.textContent === 'A') {
+                    // Check if it has backgroundColor style to distinguish from font color button
+                    const iconElement = colorIcon as HTMLElement;
+                    if (iconElement.style.backgroundColor && iconElement.style.backgroundColor !== 'transparent') {
+                      isClickOnButton = true;
+                      break;
+                    }
+                  }
+                }
+                current = current.parentElement;
+              }
+            }
+
+            if (!isClickOnButton) {
+              setShowBackgroundColorDropdown(false);
+              setHoveredBackgroundColor(null);
+              setHoveredBackgroundColorPosition(null);
+            }
+          }
+        }
+      }
+
       // Don't close if clicking inside color picker modal
       const colorPickerDialog = document.querySelector('.hh-color-picker-dialog');
       if (colorPickerDialog && colorPickerDialog.contains(target)) {
         return;
       }
-      
+
       // Deselect image if clicking outside editor, image, bounding box, and toolbar
       if (editorRef.current && !editorRef.current.contains(target)) {
         setSelectedImage(null);
@@ -659,7 +783,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           // Check if click is on a resize handle
           const isResizeHandle = (target as Element)?.closest('.hh-resize-handle');
           if (!isResizeHandle) {
-        setSelectedImage(null);
+            setSelectedImage(null);
           }
         }
       }
@@ -675,7 +799,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       if (!editorRef.current || document.activeElement !== editorRef.current) {
         return;
       }
-      
+
       if (buttonStateUpdateTimeoutRef.current) {
         clearTimeout(buttonStateUpdateTimeoutRef.current);
       }
@@ -706,7 +830,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         clearTimeout(buttonStateUpdateTimeoutRef.current);
       }
     };
-  }, [selectedImage, handleImageClick, showFontColorDropdown, showBlockFormatDropdown, showAlignmentDropdown, showListStyleDropdown, showBulletStyleDropdown, isSelectingColorRef]);
+  }, [selectedImage, handleImageClick, showFontColorDropdown, showBackgroundColorDropdown, showBlockFormatDropdown, showAlignmentDropdown, showListStyleDropdown, showBulletStyleDropdown, showFontSizeDropdown, showFontFamilyDropdown, isSelectingColorRef]);
 
   const execCommand = useCallback((command: string, value?: string) => {
     // Save state before executing command (except for undo/redo which are handled separately)
@@ -1030,12 +1154,13 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         setShowAlignmentDropdown(!showAlignmentDropdown);
         setShowBlockFormatDropdown(false);
         setShowFontColorDropdown(false);
+        setShowBackgroundColorDropdown(false);
         break;
       case 'unorderedList':
         {
           if (!editorRef.current) break;
           const bulletBookmark = saveSelection(editorRef.current);
-          
+
           // Toggle bullet list (insert/remove unordered list)
           if (document.queryCommandState('insertUnorderedList')) {
             // Already in unordered list, remove it
@@ -1050,7 +1175,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                 const range = selection.getRangeAt(0);
                 let ulElement: HTMLElement | null = null;
                 let node: Node | null = range.commonAncestorContainer;
-                
+
                 while (node && node !== editorRef.current) {
                   if (node.nodeType === Node.ELEMENT_NODE) {
                     const element = node as HTMLElement;
@@ -1061,14 +1186,14 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                   }
                   node = node.parentNode;
                 }
-                
+
                 if (ulElement) {
                   ulElement.style.listStyleType = 'disc';
                 }
               }
             }, 0);
           }
-          
+
           // Restore selection after toggle
           if (bulletBookmark) {
             requestAnimationFrame(() => {
@@ -1078,11 +1203,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
               });
             });
           }
-          
+
           // Close other dropdowns
           setShowBulletStyleDropdown(false);
           setShowBlockFormatDropdown(false);
           setShowFontColorDropdown(false);
+          setShowBackgroundColorDropdown(false);
           setShowAlignmentDropdown(false);
           setShowListStyleDropdown(false);
         }
@@ -1091,7 +1217,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         {
           if (!editorRef.current) break;
           const bookmark = saveSelection(editorRef.current);
-          
+
           // Toggle numbered list (insert/remove ordered list)
           if (document.queryCommandState('insertOrderedList')) {
             // Already in ordered list, remove it
@@ -1106,7 +1232,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                 const range = selection.getRangeAt(0);
                 let olElement: HTMLElement | null = null;
                 let node: Node | null = range.commonAncestorContainer;
-                
+
                 while (node && node !== editorRef.current) {
                   if (node.nodeType === Node.ELEMENT_NODE) {
                     const element = node as HTMLElement;
@@ -1117,7 +1243,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                   }
                   node = node.parentNode;
                 }
-                
+
                 if (olElement) {
                   olElement.style.listStyleType = 'decimal';
                   olElement.setAttribute('type', '1');
@@ -1125,7 +1251,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
               }
             }, 0);
           }
-          
+
           // Restore selection after toggle
           if (bookmark) {
             requestAnimationFrame(() => {
@@ -1135,11 +1261,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
               });
             });
           }
-          
+
           // Close other dropdowns
           setShowListStyleDropdown(false);
           setShowBlockFormatDropdown(false);
           setShowFontColorDropdown(false);
+          setShowBackgroundColorDropdown(false);
           setShowAlignmentDropdown(false);
           setShowBulletStyleDropdown(false);
         }
@@ -1154,6 +1281,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         const willShow = !showBlockFormatDropdown;
         setShowBlockFormatDropdown(willShow);
         setShowFontColorDropdown(false);
+        setShowBackgroundColorDropdown(false);
         // Update block format when opening dropdown
         if (willShow) {
           setBlockFormatUpdateTrigger(prev => prev + 1);
@@ -1767,25 +1895,326 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   };
 
 
-  const handleDecreaseFontSize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+
+  const getCurrentFontSize = (): number | null => {
     const currentPx = getCurrentFontSizeInPixels();
-    const newSize = Math.max(8, currentPx - 1); // Minimum 8px
-    applyFontSize(newSize);
+    // Check if it's a default size (no explicit fontSize style)
+    if (!editorRef.current) return null;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+
+    const range = selection.getRangeAt(0);
+    let startNode: Node = range.startContainer;
+    if (startNode.nodeType === Node.TEXT_NODE) {
+      startNode = startNode.parentElement || startNode;
+    }
+
+    // Traverse up to find element with font size style
+    let element: Element | null = startNode as Element;
+    while (element && element !== editorRef.current) {
+      if (element.nodeType === Node.ELEMENT_NODE) {
+        // Check inline style first
+        if (element instanceof HTMLElement && element.style.fontSize) {
+          return currentPx;
+        }
+      }
+      element = element.parentElement;
+    }
+
+    // If no explicit fontSize style found, return null (default)
+    return null;
   };
 
-  const handleIncreaseFontSize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const currentPx = getCurrentFontSizeInPixels();
-    const newSize = currentPx + 1; // No maximum limit
-    applyFontSize(newSize);
+  const handleFontSizeSelect = (size: number | null) => {
+    if (size === null) {
+      // Remove font size (set to default)
+      if (!editorRef.current) return;
+
+      const bookmark = saveSelection(editorRef.current);
+      saveToHistory();
+      editorRef.current.focus();
+
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        setShowFontSizeDropdown(false);
+        handleContentChange();
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+
+      // Find all elements with fontSize style in selection
+      const walker = document.createTreeWalker(
+        range.commonAncestorContainer,
+        NodeFilter.SHOW_ELEMENT,
+        null
+      );
+
+      const elementsToProcess: HTMLElement[] = [];
+      let node;
+      while (node = walker.nextNode()) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          if (element.style.fontSize) {
+            elementsToProcess.push(element);
+          }
+        }
+      }
+
+      // Also check the start container
+      let startNode: Node = range.startContainer;
+      if (startNode.nodeType === Node.TEXT_NODE) {
+        startNode = startNode.parentElement || startNode;
+      }
+      if (startNode.nodeType === Node.ELEMENT_NODE) {
+        const element = startNode as HTMLElement;
+        if (element.style.fontSize && !elementsToProcess.includes(element)) {
+          elementsToProcess.push(element);
+        }
+      }
+
+      // Remove fontSize style from all elements
+      elementsToProcess.forEach((el) => {
+        el.style.fontSize = '';
+      });
+
+      setShowFontSizeDropdown(false);
+      setFontSizeUpdateTrigger(prev => prev + 1);
+      handleContentChange();
+
+      if (bookmark) {
+        setTimeout(() => {
+          restoreSelection(editorRef.current!, bookmark);
+          editorRef.current?.focus();
+        }, 10);
+      }
+    } else {
+      // Apply specific font size
+      applyFontSize(size);
+      setShowFontSizeDropdown(false);
+    }
   };
 
-  const getCurrentFontSizeLabel = (): string => {
-    const currentPx = getCurrentFontSizeInPixels();
-    return `${currentPx}px`;
+  const getCurrentFontFamily = (): string | null => {
+    if (!editorRef.current) return null;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+
+    const range = selection.getRangeAt(0);
+    let startNode: Node = range.startContainer;
+    if (startNode.nodeType === Node.TEXT_NODE) {
+      startNode = startNode.parentElement || startNode;
+    }
+
+    // Traverse up to find element with font family style
+    let element: Element | null = startNode as Element;
+    while (element && element !== editorRef.current) {
+      if (element.nodeType === Node.ELEMENT_NODE) {
+        // Check inline style first
+        if (element instanceof HTMLElement && element.style.fontFamily) {
+          return element.style.fontFamily;
+        }
+      }
+      element = element.parentElement;
+    }
+
+    // If no explicit fontFamily style found, return null (default)
+    return null;
+  };
+
+  const applyFontFamily = (family: string) => {
+    if (!editorRef.current) return;
+
+    const bookmark = saveSelection(editorRef.current);
+    saveToHistory();
+    editorRef.current.focus();
+    const selection = window.getSelection();
+
+    if (!selection || selection.rangeCount === 0) {
+      // No selection - apply to next typed text
+      const span = document.createElement('span');
+      span.style.fontFamily = family;
+      // This will be applied when user types
+      setFontFamilyUpdateTrigger(prev => prev + 1);
+      handleContentChange();
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+
+    // Helper to find block element
+    const findBlockElement = (node: Node): Element | null => {
+      let current: Node | null = node;
+      if (current.nodeType === Node.TEXT_NODE) {
+        current = current.parentElement || current;
+      }
+      while (current && current !== editorRef.current) {
+        if (current.nodeType === Node.ELEMENT_NODE) {
+          const tag = (current as Element).tagName?.toLowerCase();
+          if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'div', 'blockquote', 'li'].includes(tag || '')) {
+            return current as Element;
+          }
+        }
+        current = current.parentNode;
+      }
+      return null;
+    };
+
+    const startBlock = findBlockElement(range.startContainer);
+
+    // If selection is within a single block, apply to that block or wrap in span
+    if (startBlock) {
+      // Check if entire block is selected
+      const blockRange = document.createRange();
+      blockRange.selectNodeContents(startBlock);
+      
+      if (range.compareBoundaryPoints(Range.START_TO_START, blockRange) >= 0 &&
+          range.compareBoundaryPoints(Range.END_TO_END, blockRange) <= 0) {
+        // Entire block or part of it - apply to block
+        if (startBlock instanceof HTMLElement) {
+          startBlock.style.fontFamily = family;
+        }
+      } else {
+        // Partial selection - wrap in span
+        try {
+          const span = document.createElement('span');
+          span.style.fontFamily = family;
+          range.surroundContents(span);
+          
+          const newRange = document.createRange();
+          newRange.selectNodeContents(span);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        } catch (e) {
+          // If surroundContents fails, extract and wrap
+          try {
+            const contents = range.extractContents();
+            const span = document.createElement('span');
+            span.style.fontFamily = family;
+            span.appendChild(contents);
+            range.insertNode(span);
+            
+            const newRange = document.createRange();
+            newRange.selectNodeContents(span);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } catch (extractError) {
+            // Final fallback: apply to block
+            if (startBlock instanceof HTMLElement) {
+              startBlock.style.fontFamily = family;
+            }
+          }
+        }
+      }
+    } else {
+      // No block found, wrap selection in span
+      try {
+        const span = document.createElement('span');
+        span.style.fontFamily = family;
+        range.surroundContents(span);
+        
+        const newRange = document.createRange();
+        newRange.selectNodeContents(span);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      } catch (e) {
+        try {
+          const contents = range.extractContents();
+          const span = document.createElement('span');
+          span.style.fontFamily = family;
+          span.appendChild(contents);
+          range.insertNode(span);
+          
+          const newRange = document.createRange();
+          newRange.selectNodeContents(span);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        } catch (extractError) {
+          editorRef.current.focus();
+        }
+      }
+    }
+
+    setFontFamilyUpdateTrigger(prev => prev + 1);
+    setTimeout(() => saveToHistory(), 10);
+    handleContentChange();
+
+    // Restore selection after font family change
+    if (bookmark) {
+      setTimeout(() => {
+        restoreSelection(editorRef.current!, bookmark);
+        editorRef.current?.focus();
+      }, 10);
+    }
+  };
+
+  const handleFontFamilySelect = (family: string | null) => {
+    if (!editorRef.current) return;
+
+    const bookmark = saveSelection(editorRef.current);
+    saveToHistory();
+    editorRef.current.focus();
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      setShowFontFamilyDropdown(false);
+      handleContentChange();
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+
+    if (family === null) {
+      // Remove font family (set to default)
+      // Find all elements with fontFamily style in selection
+      const walker = document.createTreeWalker(
+        range.commonAncestorContainer,
+        NodeFilter.SHOW_ELEMENT,
+        null
+      );
+
+      const elementsToProcess: HTMLElement[] = [];
+      let node;
+      while (node = walker.nextNode()) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          if (element.style.fontFamily) {
+            elementsToProcess.push(element);
+          }
+        }
+      }
+
+      // Also check the start container
+      let startNode: Node = range.startContainer;
+      if (startNode.nodeType === Node.TEXT_NODE) {
+        startNode = startNode.parentElement || startNode;
+      }
+      if (startNode.nodeType === Node.ELEMENT_NODE) {
+        const element = startNode as HTMLElement;
+        if (element.style.fontFamily && !elementsToProcess.includes(element)) {
+          elementsToProcess.push(element);
+        }
+      }
+
+      // Remove fontFamily style from all elements
+      elementsToProcess.forEach((el) => {
+        el.style.fontFamily = '';
+      });
+    } else {
+      // Apply font family
+      applyFontFamily(family);
+    }
+
+    setShowFontFamilyDropdown(false);
+    setFontFamilyUpdateTrigger(prev => prev + 1);
+    handleContentChange();
+
+    if (bookmark) {
+      setTimeout(() => {
+        restoreSelection(editorRef.current!, bookmark);
+        editorRef.current?.focus();
+      }, 10);
+    }
   };
 
   const getCurrentAlignment = (): string => {
@@ -1904,7 +2333,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     try {
       // Save selection before any changes
       const bookmark = saveSelection(editorRef.current);
-      
+
       // Save selection
       const range = selection.getRangeAt(0);
       const startContainer = range.startContainer;
@@ -1947,16 +2376,16 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         // Not in an ordered list, create one with the selected style
         // First, try to insert ordered list
         document.execCommand('insertOrderedList', false);
-        
+
         // Use setTimeout to ensure DOM is updated before finding the <ol>
         setTimeout(() => {
           const currentSelection = window.getSelection();
           if (!currentSelection || currentSelection.rangeCount === 0) return;
-          
+
           const currentRange = currentSelection.getRangeAt(0);
           let newOl: HTMLElement | null = null;
           let currentNode: Node | null = currentRange.commonAncestorContainer;
-          
+
           // Find the newly created <ol> from current selection
           while (currentNode && currentNode !== editorRef.current) {
             if (currentNode.nodeType === Node.ELEMENT_NODE) {
@@ -1998,7 +2427,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             handleContentChange();
             saveToHistory();
             setShowListStyleDropdown(false);
-            
+
             // Restore selection after DOM updates
             if (bookmark) {
               requestAnimationFrame(() => {
@@ -2007,12 +2436,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                   editorRef.current?.focus();
                 });
               });
-              
+
               setTimeout(() => {
                 restoreSelection(editorRef.current!, bookmark);
                 editorRef.current?.focus();
               }, 10);
-              
+
               setTimeout(() => {
                 restoreSelection(editorRef.current!, bookmark);
                 editorRef.current?.focus();
@@ -2020,7 +2449,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             }
           }
         }, 0);
-        
+
         // Restore selection immediately
         const newRange = document.createRange();
         newRange.setStart(startContainer, startOffset);
@@ -2040,7 +2469,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       handleContentChange();
       saveToHistory();
       setShowListStyleDropdown(false);
-      
+
       // Restore selection after DOM updates
       if (bookmark) {
         requestAnimationFrame(() => {
@@ -2049,12 +2478,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             editorRef.current?.focus();
           });
         });
-        
+
         setTimeout(() => {
           restoreSelection(editorRef.current!, bookmark);
           editorRef.current?.focus();
         }, 10);
-        
+
         setTimeout(() => {
           restoreSelection(editorRef.current!, bookmark);
           editorRef.current?.focus();
@@ -2078,7 +2507,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     try {
       // Save selection before any changes
       const bookmark = saveSelection(editorRef.current);
-      
+
       // Save selection
       const range = selection.getRangeAt(0);
       const startContainer = range.startContainer;
@@ -2108,16 +2537,16 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         // Not in an unordered list, create one with the selected style
         // First, try to insert unordered list
         document.execCommand('insertUnorderedList', false);
-        
+
         // Use setTimeout to ensure DOM is updated before finding the <ul>
         setTimeout(() => {
           const currentSelection = window.getSelection();
           if (!currentSelection || currentSelection.rangeCount === 0) return;
-          
+
           const currentRange = currentSelection.getRangeAt(0);
           let newUl: HTMLElement | null = null;
           let currentNode: Node | null = currentRange.commonAncestorContainer;
-          
+
           // Find the newly created <ul> from current selection
           while (currentNode && currentNode !== editorRef.current) {
             if (currentNode.nodeType === Node.ELEMENT_NODE) {
@@ -2147,7 +2576,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             handleContentChange();
             saveToHistory();
             setShowBulletStyleDropdown(false);
-            
+
             // Restore selection after DOM updates
             if (bookmark) {
               requestAnimationFrame(() => {
@@ -2156,12 +2585,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                   editorRef.current?.focus();
                 });
               });
-              
+
               setTimeout(() => {
                 restoreSelection(editorRef.current!, bookmark);
                 editorRef.current?.focus();
               }, 10);
-              
+
               setTimeout(() => {
                 restoreSelection(editorRef.current!, bookmark);
                 editorRef.current?.focus();
@@ -2169,7 +2598,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             }
           }
         }, 0);
-        
+
         // Restore selection immediately
         const newRange = document.createRange();
         newRange.setStart(startContainer, startOffset);
@@ -2189,7 +2618,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       handleContentChange();
       saveToHistory();
       setShowBulletStyleDropdown(false);
-      
+
       // Restore selection after DOM updates
       if (bookmark) {
         requestAnimationFrame(() => {
@@ -2198,12 +2627,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             editorRef.current?.focus();
           });
         });
-        
+
         setTimeout(() => {
           restoreSelection(editorRef.current!, bookmark);
           editorRef.current?.focus();
         }, 10);
-        
+
         setTimeout(() => {
           restoreSelection(editorRef.current!, bookmark);
           editorRef.current?.focus();
@@ -2258,7 +2687,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     if (!editorRef.current) return 'paragraph';
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return 'paragraph';
-    
+
     const range = selection.getRangeAt(0);
 
     // Try to get block format from the start of selection first
@@ -2274,19 +2703,31 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
         const tagName = element.tagName?.toLowerCase();
 
         // Check for block format tags
-    if (tagName === 'h1') return 'heading1';
-    if (tagName === 'h2') return 'heading2';
-    if (tagName === 'h3') return 'heading3';
-    if (tagName === 'h4') return 'heading4';
-    if (tagName === 'h5') return 'heading5';
-    if (tagName === 'h6') return 'heading6';
-    if (tagName === 'pre' || tagName === 'code') return 'preformatted';
+        if (tagName === 'h1') return 'heading1';
+        if (tagName === 'h2') return 'heading2';
+        if (tagName === 'h3') return 'heading3';
+        if (tagName === 'h4') return 'heading4';
+        if (tagName === 'h5') return 'heading5';
+        if (tagName === 'h6') return 'heading6';
+        if (tagName === 'pre') return 'preformatted';
+        if (tagName === 'code') return 'code';
+        if (tagName === 'blockquote') return 'quote';
+        if (tagName === 'div') return 'normal';
         if (tagName === 'p') return 'paragraph';
 
-        // Check if it's a block-level element (div, blockquote, li, etc.)
-        if (['div', 'blockquote', 'li'].includes(tagName || '')) {
-          // For div, check if it has any block formatting
-          // If not, treat as paragraph
+        // Check if it's a list item
+        if (tagName === 'li') {
+          // Check parent for heading or other format
+          const parent = element.parentElement;
+          if (parent) {
+            const parentTag = parent.tagName?.toLowerCase();
+            if (parentTag === 'h1') return 'heading1';
+            if (parentTag === 'h2') return 'heading2';
+            if (parentTag === 'h3') return 'heading3';
+            if (parentTag === 'h4') return 'heading4';
+            if (parentTag === 'h5') return 'heading5';
+            if (parentTag === 'h6') return 'heading6';
+          }
           return 'paragraph';
         }
       }
@@ -2302,26 +2743,26 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   const saveSelection = (rootEl: HTMLElement) => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return null;
-    
+
     const range = selection.getRangeAt(0);
-    
+
     // Get path from root to node
     function getNodePath(node: Node) {
       const path: number[] = [];
       let currentNode: Node | null = node;
-      
+
       while (currentNode && currentNode !== rootEl) {
         const parent: Node | null = currentNode.parentNode;
         if (!parent) break;
-        
+
         const index = Array.prototype.indexOf.call(parent.childNodes, currentNode);
         path.unshift(index);
         currentNode = parent;
       }
-      
+
       return path;
     }
-    
+
     return {
       startPath: getNodePath(range.startContainer),
       startOffset: range.startOffset,
@@ -2329,53 +2770,122 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       endOffset: range.endOffset,
     };
   };
-  
+
   const restoreSelection = (rootEl: HTMLElement, bookmark: any) => {
     const selection = window.getSelection();
     if (!selection || !bookmark) return;
-    
+
     function getNodeFromPath(path: number[]) {
       let node: Node | null = rootEl;
-      
+
       for (const index of path) {
         if (!node || index >= node.childNodes.length) {
           return null;
         }
         node = node.childNodes[index];
       }
-      
+
       return node;
     }
-    
+
     const startNode = getNodeFromPath(bookmark.startPath);
     const endNode = getNodeFromPath(bookmark.endPath);
-    
+
     if (!startNode || !endNode) return;
-    
+
     const range = document.createRange();
     range.setStart(startNode, bookmark.startOffset);
     range.setEnd(endNode, bookmark.endOffset);
-    
+
     selection.removeAllRanges();
     selection.addRange(range);
   };
 
   const handleBlockFormatSelect = (format: string) => {
     if (!editorRef.current) return;
-    
+
     // Save selection before any changes
     const bookmark = saveSelection(editorRef.current);
-    
+
     saveToHistory();
     isApplyingFormatRef.current = true;
     editorRef.current.focus();
 
     const selection = window.getSelection();
-    const newTag = format === 'paragraph' ? 'p' : format;
-    
+    // format is already a tag (p, div, blockquote, pre, h1, etc.) from BlockFormatDropdown
+    const newTag = format;
+
     if (!selection || selection.rangeCount === 0) {
-      // No selection - use execCommand
-      document.execCommand('formatBlock', false, newTag);
+      // No selection - for ol/ul, don't use execCommand as it may cause issues
+      if (newTag.toLowerCase() === 'ol' || newTag.toLowerCase() === 'ul') {
+        // Find the current block and convert it
+        if (editorRef.current) {
+          const range = document.createRange();
+          range.selectNodeContents(editorRef.current);
+          const walker = document.createTreeWalker(
+            editorRef.current,
+            NodeFilter.SHOW_ELEMENT,
+            {
+              acceptNode: (node: Node) => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  const tag = (node as Element).tagName?.toLowerCase();
+                  if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'div', 'blockquote'].includes(tag || '')) {
+                    return NodeFilter.FILTER_ACCEPT;
+                  }
+                }
+                return NodeFilter.FILTER_SKIP;
+              }
+            }
+          );
+          
+          const firstBlock = walker.nextNode() as Element;
+          if (firstBlock && firstBlock.parentNode) {
+            const listElement = document.createElement(newTag);
+            const li = document.createElement('li');
+            
+            // Clean and move content
+            const children = Array.from(firstBlock.childNodes);
+            children.forEach((child) => {
+              if (child.nodeType === Node.TEXT_NODE) {
+                const text = child.textContent?.trim();
+                if (text) {
+                  li.appendChild(document.createTextNode(text));
+                }
+              } else if (child.nodeType === Node.ELEMENT_NODE) {
+                const element = child as HTMLElement;
+                if (element.tagName?.toLowerCase() === 'pre') {
+                  // Extract content from pre
+                  Array.from(element.childNodes).forEach((preChild) => {
+                    if (preChild.nodeType === Node.TEXT_NODE) {
+                      const text = preChild.textContent?.trim();
+                      if (text) {
+                        li.appendChild(document.createTextNode(text));
+                      }
+                    } else {
+                      li.appendChild(preChild.cloneNode(true));
+                    }
+                  });
+                } else {
+                  li.appendChild(child.cloneNode(true));
+                }
+              }
+            });
+            
+            if (li.childNodes.length === 0 && firstBlock.textContent) {
+              const text = firstBlock.textContent.trim();
+              if (text) {
+                li.appendChild(document.createTextNode(text));
+              }
+            }
+            
+            listElement.appendChild(li);
+            firstBlock.parentNode.replaceChild(listElement, firstBlock);
+          }
+        }
+      } else {
+        // For other tags, use execCommand
+        document.execCommand('formatBlock', false, newTag);
+      }
       setShowBlockFormatDropdown(false);
       handleContentChange();
       setTimeout(() => { isApplyingFormatRef.current = false; }, 100);
@@ -2390,15 +2900,15 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       if (current.nodeType === Node.TEXT_NODE) {
         current = current.parentElement || current;
       }
-    while (current && current !== editorRef.current) {
+      while (current && current !== editorRef.current) {
         if (current.nodeType === Node.ELEMENT_NODE) {
           const tag = (current as Element).tagName?.toLowerCase();
           if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'div', 'blockquote', 'li'].includes(tag || '')) {
             return current as Element;
           }
+        }
+        current = current.parentNode;
       }
-      current = current.parentNode;
-    }
       return null;
     };
 
@@ -2410,28 +2920,28 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       const blocks: Element[] = [];
       const startContainer = range.startContainer;
       const endContainer = range.endContainer;
-      
+
       // Helper to check if a node is within the range
       const isNodeInRange = (node: Node): boolean => {
         if (node.nodeType !== Node.ELEMENT_NODE) return false;
-        
+
         try {
           const element = node as Element;
-          
+
           // Check if range intersects the node
           if (range.intersectsNode(node)) {
             return true;
           }
-          
+
           // Check if node contains range boundaries
           if (element.contains(startContainer) || element.contains(endContainer)) {
             return true;
           }
-          
+
           // Check if the node is completely within the range
           const nodeRange = document.createRange();
           nodeRange.selectNodeContents(node);
-          
+
           try {
             const startComparison = range.compareBoundaryPoints(Range.START_TO_START, nodeRange);
             const endComparison = range.compareBoundaryPoints(Range.END_TO_END, nodeRange);
@@ -2445,10 +2955,10 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             const nodeEnd = nodeRange.endContainer;
             const startPos = startContainer.compareDocumentPosition(nodeStart);
             const endPos = endContainer.compareDocumentPosition(nodeEnd);
-            
+
             // If node start is after range start and node end is before range end
             if ((startPos & Node.DOCUMENT_POSITION_FOLLOWING) === 0 &&
-                (endPos & Node.DOCUMENT_POSITION_PRECEDING) === 0) {
+              (endPos & Node.DOCUMENT_POSITION_PRECEDING) === 0) {
               return true;
             }
           }
@@ -2463,28 +2973,28 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       // Collect all blocks by traversing from start to end
       // First, get all potential block elements
       const allBlocks: Element[] = [];
-      
+
       if (editorRef.current) {
         // Get all list items
         const allListItems = editorRef.current.querySelectorAll('li');
         allListItems.forEach((li) => {
           allBlocks.push(li);
         });
-        
+
         // Get all other block elements
         const allOtherBlocks = editorRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, pre, div, blockquote');
         allOtherBlocks.forEach((block) => {
           allBlocks.push(block);
         });
       }
-      
+
       // Filter blocks that are in the range
       allBlocks.forEach((block) => {
         if (isNodeInRange(block) && !blocks.includes(block)) {
           blocks.push(block);
         }
       });
-      
+
       // Also use TreeWalker as fallback to catch any missed blocks
       const walker = document.createTreeWalker(
         range.commonAncestorContainer,
@@ -2525,7 +3035,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     };
 
     const blocksToProcess = collectBlocksInRange(range);
-    
+
     // Store processed elements for selection restoration
     const processedElements: Element[] = [];
 
@@ -2534,7 +3044,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       // Process list items first, then other blocks
       const listItems: Element[] = [];
       const otherBlocks: Element[] = [];
-      
+
       blocksToProcess.forEach((block) => {
         if (block.tagName?.toLowerCase() === 'li') {
           listItems.push(block);
@@ -2542,111 +3052,395 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           otherBlocks.push(block);
         }
       });
-      
-      // Process list items - wrap content in heading but keep list structure
-      listItems.forEach((block) => {
-        if (block !== editorRef.current && block.parentNode) {
-          // Instead of extracting from list, wrap the content in the new tag
-          // but keep it inside the list item
-          const newElement = document.createElement(newTag);
+
+      // Process list items - only change tagName of content inside, keep list structure
+      listItems.forEach((li) => {
+        if (li !== editorRef.current && li.parentNode) {
+          const blockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'div', 'blockquote'];
           
-          // Move all children to the new heading element
-          const children = Array.from(block.childNodes);
-          children.forEach((child) => {
-            newElement.appendChild(child);
-          });
+          // Find all block elements in this li
+          const blockElements: HTMLElement[] = [];
+          for (let i = 0; i < li.children.length; i++) {
+            const child = li.children[i];
+            if (blockTags.includes(child.tagName?.toLowerCase() || '')) {
+              blockElements.push(child as HTMLElement);
+            }
+          }
           
-          // Preserve inline styles from list item
-          if (block instanceof HTMLElement) {
-            const oldStyles = block.style;
+          // If no block elements, wrap all content in new element
+          if (blockElements.length === 0) {
+            const newElement = document.createElement(newTag);
+            // Move all child nodes (text nodes and elements) to new element
+            const children = Array.from(li.childNodes);
+            children.forEach((child) => {
+              newElement.appendChild(child);
+            });
+            // Clear li and add new element
+            li.innerHTML = '';
+            li.appendChild(newElement);
+            
+            // Preserve inline styles from list item itself (if any, but not list-related styles)
+            if (li instanceof HTMLElement) {
+              const liStyles = li.style;
+              for (let j = 0; j < liStyles.length; j++) {
+                const prop = liStyles[j];
+                const value = liStyles.getPropertyValue(prop);
+                if (value && prop !== 'list-style-type' && prop !== 'list-style' && prop !== 'margin' && prop !== 'padding') {
+                  newElement.style.setProperty(prop, value, liStyles.getPropertyPriority(prop));
+                }
+              }
+            }
+            
+            processedElements.push(newElement);
+            return;
+          }
+          
+          // Process each block element in the li
+          blockElements.forEach((blockElement) => {
+            // If already has the correct tag, skip it
+            if (blockElement.tagName?.toLowerCase() === newTag.toLowerCase()) {
+              processedElements.push(blockElement);
+              return;
+            }
+            
+            // Create new element with the desired tag
+            const newElement = document.createElement(newTag);
+            
+            // Preserve inline styles from existing block element
+            const oldStyles = blockElement.style;
             for (let j = 0; j < oldStyles.length; j++) {
               const prop = oldStyles[j];
               newElement.style.setProperty(prop, oldStyles.getPropertyValue(prop), oldStyles.getPropertyPriority(prop));
             }
-          }
-          
-          // Clear the list item and add the new heading element
-          block.innerHTML = '';
-          block.appendChild(newElement);
-          
-          // Store the new heading element for selection restoration
-          processedElements.push(newElement);
-        }
-      })
-      
-      // Process other blocks (non-list items)
-      otherBlocks.forEach((block) => {
-        if (block !== editorRef.current && block.parentNode) {
-          const newElement = document.createElement(newTag);
-          // Clone all children to preserve formatting (including font size styles on block)
-          Array.from(block.childNodes).forEach((child) => {
-            newElement.appendChild(child.cloneNode(true));
+            
+            // Move all children from existing block to new element
+            Array.from(blockElement.childNodes).forEach((child) => {
+              newElement.appendChild(child);
+            });
+            
+            // Replace the old block element with new one
+            li.replaceChild(newElement, blockElement);
+            
+            // Store the new element for selection restoration
+            processedElements.push(newElement);
           });
-          // Preserve inline styles from block element (like fontSize)
-          if (block instanceof HTMLElement) {
-            const oldStyles = block.style;
-            for (let j = 0; j < oldStyles.length; j++) {
-              const prop = oldStyles[j];
-              newElement.style.setProperty(prop, oldStyles.getPropertyValue(prop), oldStyles.getPropertyPriority(prop));
-            }
-          }
-          block.parentNode.replaceChild(newElement, block);
-          
-          // Store the new element for selection restoration
-          processedElements.push(newElement);
         }
       });
+
+      // Process other blocks (non-list items) - replace the block tag
+      // Special handling for ol/ul - convert blocks to list items
+      if (newTag.toLowerCase() === 'ol' || newTag.toLowerCase() === 'ul') {
+        // Create a single list element
+        const listElement = document.createElement(newTag);
+        
+        // Helper function to clean and normalize content
+        const cleanAndMoveContent = (source: Node, target: HTMLElement) => {
+          // Get all child nodes
+          const children = Array.from(source.childNodes);
+          
+          children.forEach((child) => {
+            if (child.nodeType === Node.TEXT_NODE) {
+              // For text nodes, trim and only add if there's content
+              const text = child.textContent || '';
+              const trimmed = text.trim();
+              if (trimmed) {
+                // Create a new text node with trimmed content
+                const textNode = document.createTextNode(trimmed);
+                target.appendChild(textNode);
+              }
+            } else if (child.nodeType === Node.ELEMENT_NODE) {
+              const element = child as HTMLElement;
+              // Skip pre tags that might wrap content
+              if (element.tagName?.toLowerCase() === 'pre') {
+                // Move children from pre to target, cleaning whitespace
+                cleanAndMoveContent(element, target);
+              } else {
+                // Clone the element to avoid issues
+                const cloned = element.cloneNode(true) as HTMLElement;
+                target.appendChild(cloned);
+              }
+            }
+          });
+        };
+        
+        // Convert each block to a list item
+        otherBlocks.forEach((block) => {
+          if (block !== editorRef.current) {
+            const li = document.createElement('li');
+            
+            // Clean and move content from block to li
+            cleanAndMoveContent(block, li);
+            
+            // If li is empty after cleaning, add text content as fallback
+            if (li.childNodes.length === 0 && block.textContent) {
+              const text = block.textContent.trim();
+              if (text) {
+                li.appendChild(document.createTextNode(text));
+              }
+            }
+            
+            // Don't preserve block styles for list items - keep it clean
+            // Only preserve font-size if it was explicitly set
+            if (block instanceof HTMLElement && block.style.fontSize) {
+              li.style.fontSize = block.style.fontSize;
+            }
+            
+            listElement.appendChild(li);
+            processedElements.push(li);
+          }
+        });
+        
+        // Insert the list element before the first block, then remove all blocks
+        if (otherBlocks.length > 0) {
+          const firstBlock = otherBlocks[0];
+          if (firstBlock.parentNode) {
+            firstBlock.parentNode.insertBefore(listElement, firstBlock);
+            
+            // Remove all processed blocks
+            otherBlocks.forEach((block) => {
+              if (block.parentNode && block !== editorRef.current) {
+                block.parentNode.removeChild(block);
+              }
+            });
+          }
+        }
+      } else {
+        // Normal block replacement for other tags
+        otherBlocks.forEach((block) => {
+          if (block !== editorRef.current && block.parentNode) {
+            // Skip if it's already the correct tag
+            if (block.tagName?.toLowerCase() === newTag.toLowerCase()) {
+              processedElements.push(block);
+              return;
+            }
+
+            const newElement = document.createElement(newTag);
+            // Move all children (not clone) to preserve references
+            // Filter out empty text nodes (whitespace only)
+            Array.from(block.childNodes).forEach((child) => {
+              if (child.nodeType === Node.TEXT_NODE) {
+                const text = child.textContent;
+                if (text && text.trim()) {
+                  newElement.appendChild(child);
+                }
+              } else {
+                newElement.appendChild(child);
+              }
+            });
+            
+            // Preserve inline styles from block element (like fontSize)
+            if (block instanceof HTMLElement) {
+              const oldStyles = block.style;
+              for (let j = 0; j < oldStyles.length; j++) {
+                const prop = oldStyles[j];
+                newElement.style.setProperty(prop, oldStyles.getPropertyValue(prop), oldStyles.getPropertyPriority(prop));
+              }
+            }
+            
+            block.parentNode.replaceChild(newElement, block);
+
+            // Store the new element for selection restoration
+            processedElements.push(newElement);
+          }
+        });
+      }
     } else if (startBlock) {
       // Single block fallback
       if (startBlock !== editorRef.current && startBlock.parentNode) {
-        const newElement = document.createElement(newTag);
-        Array.from(startBlock.childNodes).forEach((child) => {
-          newElement.appendChild(child.cloneNode(true));
-        });
-        // Preserve inline styles
-        if (startBlock instanceof HTMLElement) {
-          const oldStyles = startBlock.style;
-          for (let i = 0; i < oldStyles.length; i++) {
-            const prop = oldStyles[i];
-            newElement.style.setProperty(prop, oldStyles.getPropertyValue(prop), oldStyles.getPropertyPriority(prop));
+        // Skip if it's already the correct tag
+        if (startBlock.tagName?.toLowerCase() === newTag.toLowerCase()) {
+          processedElements.push(startBlock);
+        } else if (newTag.toLowerCase() === 'ol' || newTag.toLowerCase() === 'ul') {
+          // Special handling for ol/ul - convert block to list with single item
+          const listElement = document.createElement(newTag);
+          const li = document.createElement('li');
+          
+          // Helper function to clean and normalize content
+          const cleanAndMoveContent = (source: Node, target: HTMLElement) => {
+            const children = Array.from(source.childNodes);
+            children.forEach((child) => {
+              if (child.nodeType === Node.TEXT_NODE) {
+                const text = child.textContent || '';
+                const trimmed = text.trim();
+                if (trimmed) {
+                  const textNode = document.createTextNode(trimmed);
+                  target.appendChild(textNode);
+                }
+              } else if (child.nodeType === Node.ELEMENT_NODE) {
+                const element = child as HTMLElement;
+                // Skip pre tags that might wrap content
+                if (element.tagName?.toLowerCase() === 'pre') {
+                  cleanAndMoveContent(element, target);
+                } else {
+                  const cloned = element.cloneNode(true) as HTMLElement;
+                  target.appendChild(cloned);
+                }
+              }
+            });
+          };
+          
+          // Clean and move content from block to li
+          cleanAndMoveContent(startBlock, li);
+          
+          // If li is empty after cleaning, add text content as fallback
+          if (li.childNodes.length === 0 && startBlock.textContent) {
+            const text = startBlock.textContent.trim();
+            if (text) {
+              li.appendChild(document.createTextNode(text));
+            }
           }
+          
+          // Don't preserve block styles for list items - keep it clean
+          // Only preserve font-size if it was explicitly set
+          if (startBlock instanceof HTMLElement && startBlock.style.fontSize) {
+            li.style.fontSize = startBlock.style.fontSize;
+          }
+          
+          listElement.appendChild(li);
+          startBlock.parentNode.replaceChild(listElement, startBlock);
+          processedElements.push(li);
+        } else {
+          const newElement = document.createElement(newTag);
+          // Filter out empty text nodes (whitespace only)
+          Array.from(startBlock.childNodes).forEach((child) => {
+            if (child.nodeType === Node.TEXT_NODE) {
+              const text = child.textContent;
+              if (text && text.trim()) {
+                newElement.appendChild(child);
+              }
+            } else {
+              newElement.appendChild(child);
+            }
+          });
+          // Preserve inline styles
+          if (startBlock instanceof HTMLElement) {
+            const oldStyles = startBlock.style;
+            for (let i = 0; i < oldStyles.length; i++) {
+              const prop = oldStyles[i];
+              newElement.style.setProperty(prop, oldStyles.getPropertyValue(prop), oldStyles.getPropertyPriority(prop));
+            }
+          }
+          startBlock.parentNode.replaceChild(newElement, startBlock);
+          processedElements.push(newElement);
         }
-        startBlock.parentNode.replaceChild(newElement, startBlock);
-    } else {
-        document.execCommand('formatBlock', false, newTag);
+      } else {
+        // For ol/ul, don't use execCommand to avoid pre tag wrapping
+        if (newTag.toLowerCase() === 'ol' || newTag.toLowerCase() === 'ul') {
+          const listElement = document.createElement(newTag);
+          const li = document.createElement('li');
+          if (startBlock.textContent) {
+            const text = startBlock.textContent.trim();
+            if (text) {
+              li.appendChild(document.createTextNode(text));
+            }
+          }
+          listElement.appendChild(li);
+          if (editorRef.current && startBlock.parentNode) {
+            startBlock.parentNode.replaceChild(listElement, startBlock);
+          }
+        } else {
+          document.execCommand('formatBlock', false, newTag);
+        }
       }
     } else {
-      // Fallback: use execCommand
-      document.execCommand('formatBlock', false, newTag);
+      // Fallback: for ol/ul, create a simple list
+      if (newTag.toLowerCase() === 'ol' || newTag.toLowerCase() === 'ul') {
+        const listElement = document.createElement(newTag);
+        const li = document.createElement('li');
+        li.appendChild(document.createTextNode(''));
+        listElement.appendChild(li);
+        if (editorRef.current) {
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.insertNode(listElement);
+          } else {
+            editorRef.current.appendChild(listElement);
+          }
+        }
+      } else {
+        document.execCommand('formatBlock', false, newTag);
+      }
     }
-    
+
     setShowBlockFormatDropdown(false);
-    
+
     // Update triggers first
     setButtonStateUpdateTrigger(prev => prev + 1);
     setBlockFormatUpdateTrigger(prev => prev + 1);
     setFontSizeUpdateTrigger(prev => prev + 1);
-    
+
     // Handle content change
     handleContentChange();
-    
+
     // Restore selection after DOM updates
     if (bookmark) {
+      // Try multiple times to restore selection as DOM may not be ready immediately
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          restoreSelection(editorRef.current!, bookmark);
-          editorRef.current?.focus();
+          try {
+            restoreSelection(editorRef.current!, bookmark);
+            editorRef.current?.focus();
+          } catch (e) {
+            // If bookmark restore fails and we have processed elements, select the first one
+            if (processedElements.length > 0) {
+              const selection = window.getSelection();
+              if (selection) {
+                const range = document.createRange();
+                const targetElement = processedElements[0];
+                // Try to find a text node in the element
+                const textNode = targetElement.firstChild;
+                if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                  range.setStart(textNode, 0);
+                  range.setEnd(textNode, Math.min(textNode.textContent?.length || 0, bookmark.endOffset || 0));
+                } else {
+                  range.selectNodeContents(targetElement);
+                }
+                selection.removeAllRanges();
+                selection.addRange(range);
+                editorRef.current?.focus();
+              }
+            }
+          }
         });
       });
-      
+
       setTimeout(() => {
-        restoreSelection(editorRef.current!, bookmark);
-        editorRef.current?.focus();
+        try {
+          restoreSelection(editorRef.current!, bookmark);
+          editorRef.current?.focus();
+        } catch (e) {
+          // Fallback: select first processed element if available
+          if (processedElements.length > 0) {
+            const selection = window.getSelection();
+            if (selection) {
+              const range = document.createRange();
+              range.selectNodeContents(processedElements[0]);
+              selection.removeAllRanges();
+              selection.addRange(range);
+              editorRef.current?.focus();
+            }
+          }
+        }
       }, 50);
-      
+
       setTimeout(() => {
-        restoreSelection(editorRef.current!, bookmark);
-        editorRef.current?.focus();
+        try {
+          restoreSelection(editorRef.current!, bookmark);
+          editorRef.current?.focus();
+        } catch (e) {
+          // Final fallback
+          if (processedElements.length > 0) {
+            const selection = window.getSelection();
+            if (selection) {
+              const range = document.createRange();
+              range.selectNodeContents(processedElements[0]);
+              selection.removeAllRanges();
+              selection.addRange(range);
+              editorRef.current?.focus();
+            }
+          }
+        }
       }, 150);
     }
 
@@ -2667,7 +3461,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
     // Save state before applying color
     saveToHistory();
-    
+
     // Set flag to prevent click outside handler from interfering
     isSelectingColorRef.current = true;
 
@@ -2691,12 +3485,12 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           rangeToUse = currentSelection.getRangeAt(0);
         }
       }
-      
+
       // Fallback to current selection
       if (!rangeToUse && currentSelection && currentSelection.rangeCount > 0) {
         rangeToUse = currentSelection.getRangeAt(0);
       }
-        
+
       // If no selection or collapsed, use execCommand which will apply to future typing
       if (!rangeToUse || rangeToUse.collapsed) {
         try {
@@ -2731,7 +3525,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           }
         }
       }
-        
+
       // Restore selection after applying color
       if (bookmark) {
         requestAnimationFrame(() => {
@@ -2740,13 +3534,13 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             editorRef.current?.focus();
           });
         });
-        
+
         setTimeout(() => {
           restoreSelection(editorRef.current!, bookmark);
           editorRef.current?.focus();
         }, 10);
       }
-        
+
       // Reset flag after a short delay
       setTimeout(() => {
         isSelectingColorRef.current = false;
@@ -2754,6 +3548,224 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     });
   };
 
+
+  const handleBackgroundColorSelect = (color: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (!editorRef.current) return;
+
+    // Save selection before any changes
+    const bookmark = saveSelection(editorRef.current);
+
+    // Save state before applying color
+    saveToHistory();
+
+    // Set flag to prevent click outside handler from interfering
+    isSelectingColorRef.current = true;
+
+    // Close dropdown
+    setShowBackgroundColorDropdown(false);
+    setHoveredBackgroundColor(null);
+    setHoveredBackgroundColorPosition(null);
+
+    // Ensure editor has focus
+    editorRef.current.focus();
+
+    // Apply background color immediately
+    requestAnimationFrame(() => {
+      const currentSelection = window.getSelection();
+      let rangeToUse: Range | null = null;
+
+      // Try to restore selection from bookmark first
+      if (bookmark) {
+        restoreSelection(editorRef.current!, bookmark);
+        if (currentSelection && currentSelection.rangeCount > 0) {
+          rangeToUse = currentSelection.getRangeAt(0);
+        }
+      }
+
+      // Fallback to current selection
+      if (!rangeToUse && currentSelection && currentSelection.rangeCount > 0) {
+        rangeToUse = currentSelection.getRangeAt(0);
+      }
+
+      // If no selection or collapsed, use execCommand which will apply to future typing
+      if (!rangeToUse || rangeToUse.collapsed) {
+        try {
+          // execCommand will apply background color to future typed text
+          document.execCommand('backColor', false, color);
+          handleContentChange();
+        } catch (err) {
+          console.error('Error applying background color:', err);
+        }
+      } else {
+        // Use execCommand to apply background color to selection
+        try {
+          document.execCommand('backColor', false, color);
+          handleContentChange();
+        } catch (err) {
+          console.error('Error applying background color:', err);
+          // Fallback: wrap selection in span with background color
+          try {
+            const span = document.createElement('span');
+            span.style.backgroundColor = color;
+            try {
+              rangeToUse.surroundContents(span);
+              handleContentChange();
+            } catch (e) {
+              const contents = rangeToUse.extractContents();
+              span.appendChild(contents);
+              rangeToUse.insertNode(span);
+              handleContentChange();
+            }
+          } catch (fallbackErr) {
+            console.error('Fallback background color application failed:', fallbackErr);
+          }
+        }
+      }
+
+      // Restore selection after applying background color
+      if (bookmark) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            restoreSelection(editorRef.current!, bookmark);
+            editorRef.current?.focus();
+          });
+        });
+
+        setTimeout(() => {
+          restoreSelection(editorRef.current!, bookmark);
+          editorRef.current?.focus();
+        }, 10);
+      }
+
+      // Reset flag after a short delay
+      setTimeout(() => {
+        isSelectingColorRef.current = false;
+      }, 100);
+    });
+  };
+
+  const handleRemoveBackgroundColor = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Save state before removing background color
+    if (editorRef.current) {
+      saveToHistory();
+    }
+
+    // Set flag to prevent click outside handler from interfering
+    isSelectingColorRef.current = true;
+
+    if (!editorRef.current) {
+      isSelectingColorRef.current = false;
+      setShowBackgroundColorDropdown(false);
+      return;
+    }
+
+    // Save selection BEFORE closing dropdown
+    const selection = window.getSelection();
+    let savedRange: Range | null = null;
+
+    if (selection && selection.rangeCount > 0) {
+      try {
+        savedRange = selection.getRangeAt(0).cloneRange();
+      } catch (err) {
+        // If cloning fails, try to get selection from editor
+        if (editorRef.current.contains(selection.anchorNode)) {
+          savedRange = selection.getRangeAt(0).cloneRange();
+        }
+      }
+    }
+
+    // Close dropdown
+    setShowBackgroundColorDropdown(false);
+    setHoveredBackgroundColor(null);
+    setHoveredBackgroundColorPosition(null);
+
+    // Ensure editor has focus
+    editorRef.current.focus();
+
+    // Remove background color
+    requestAnimationFrame(() => {
+      const currentSelection = window.getSelection();
+
+      // Restore selection if we saved it
+      if (savedRange) {
+        try {
+          if (currentSelection) {
+            currentSelection.removeAllRanges();
+            currentSelection.addRange(savedRange);
+          }
+        } catch (err) {
+          // Selection might be invalid, try to get current selection
+          if (currentSelection && currentSelection.rangeCount > 0) {
+            savedRange = currentSelection.getRangeAt(0).cloneRange();
+          }
+        }
+      } else if (currentSelection && currentSelection.rangeCount > 0) {
+        savedRange = currentSelection.getRangeAt(0).cloneRange();
+      }
+
+      // Remove background color by setting to transparent
+      try {
+        if (savedRange && currentSelection) {
+          currentSelection.removeAllRanges();
+          currentSelection.addRange(savedRange);
+        }
+        // Find and remove backgroundColor style from elements in selection
+        if (savedRange) {
+          const walker = document.createTreeWalker(
+            savedRange.commonAncestorContainer,
+            NodeFilter.SHOW_ELEMENT,
+            null
+          );
+
+          const elementsToProcess: HTMLElement[] = [];
+          let node;
+          while (node = walker.nextNode()) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as HTMLElement;
+              if (element.style.backgroundColor) {
+                elementsToProcess.push(element);
+              }
+            }
+          }
+
+          // Also check the start container
+          let startNode: Node = savedRange.startContainer;
+          if (startNode.nodeType === Node.TEXT_NODE) {
+            startNode = startNode.parentElement || startNode;
+          }
+          if (startNode.nodeType === Node.ELEMENT_NODE) {
+            const element = startNode as HTMLElement;
+            if (element.style.backgroundColor && !elementsToProcess.includes(element)) {
+              elementsToProcess.push(element);
+            }
+          }
+
+          // Remove backgroundColor style from all elements
+          elementsToProcess.forEach((el) => {
+            el.style.backgroundColor = '';
+          });
+        }
+        handleContentChange();
+      } catch (err) {
+        console.error('Error removing background color:', err);
+      }
+
+      // Reset flag after a short delay
+      setTimeout(() => {
+        isSelectingColorRef.current = false;
+      }, 100);
+    });
+  };
 
   const handleRemoveColor = (e?: React.MouseEvent) => {
     if (e) {
@@ -2771,7 +3783,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
     if (!editorRef.current) {
       isSelectingColorRef.current = false;
-    setShowFontColorDropdown(false);
+      setShowFontColorDropdown(false);
       return;
     }
 
@@ -2839,7 +3851,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
   };
 
 
-  const openColorPicker = (initialColor?: string) => {
+  const openColorPicker = (initialColor?: string, forBackground: boolean = false) => {
     // Save selection before opening color picker
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
@@ -2848,10 +3860,17 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       savedColorPickerSelectionRef.current = null;
     }
 
+    setColorPickerForBackground(forBackground);
+
     let color = initialColor;
     if (!color) {
-      const currentColor = getCurrentFontColor();
-      color = currentColor || '#000000';
+      if (forBackground) {
+        const currentBgColor = getCurrentBackgroundColor();
+        color = currentBgColor || '#FFFFFF';
+      } else {
+        const currentColor = getCurrentFontColor();
+        color = currentColor || '#000000';
+      }
     }
     // Ensure color is in hex format
     if (!color.startsWith('#')) {
@@ -2882,13 +3901,17 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       });
     }
     setShowColorPicker(true);
-    setShowFontColorDropdown(false);
+    if (colorPickerForBackground) {
+      setShowBackgroundColorDropdown(false);
+    } else {
+      setShowFontColorDropdown(false);
+    }
   };
 
   const updatePickerColor = (updates: Partial<PickerColor>) => {
     setPickerColor(prev => {
       const updated = { ...prev, ...updates };
-      
+
       // If HSL changed, update RGB and Hex
       if (updates.h !== undefined || updates.s !== undefined || updates.l !== undefined) {
         const rgb = hslToRgb(updated.h, updated.s, updated.l);
@@ -2918,14 +3941,14 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           updated.l = hsl.l;
         }
       }
-      
+
       return updated;
     });
   };
 
   const handleColorPickerSave = () => {
     if (!editorRef.current) {
-    setShowColorPicker(false);
+      setShowColorPicker(false);
       return;
     }
 
@@ -2980,7 +4003,11 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       if (!rangeToUse || rangeToUse.collapsed) {
         try {
           // execCommand will apply color to future typed text
-          document.execCommand('foreColor', false, pickerColor.hex);
+          if (colorPickerForBackground) {
+            document.execCommand('backColor', false, pickerColor.hex);
+          } else {
+            document.execCommand('foreColor', false, pickerColor.hex);
+          }
           handleContentChange();
         } catch (err) {
           console.error('Error applying color:', err);
@@ -2988,14 +4015,22 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
       } else {
         // Use execCommand to apply color to selection
         try {
-          document.execCommand('foreColor', false, pickerColor.hex);
+          if (colorPickerForBackground) {
+            document.execCommand('backColor', false, pickerColor.hex);
+          } else {
+            document.execCommand('foreColor', false, pickerColor.hex);
+          }
           handleContentChange();
         } catch (err) {
           console.error('Error applying color:', err);
           // Fallback: wrap selection in span with color
           try {
             const span = document.createElement('span');
-            span.style.color = pickerColor.hex;
+            if (colorPickerForBackground) {
+              span.style.backgroundColor = pickerColor.hex;
+            } else {
+              span.style.color = pickerColor.hex;
+            }
             try {
               rangeToUse.surroundContents(span);
               handleContentChange();
@@ -3045,19 +4080,19 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     let element: Element | null = startNode as Element;
     while (element && element !== editorRef.current) {
       if (element.nodeType === Node.ELEMENT_NODE) {
-    // Check inline style first
+        // Check inline style first
         if (element instanceof HTMLElement && element.style.fontSize) {
           const inlineStyle = element.style.fontSize;
-      const pixelSize = parseFloat(inlineStyle);
+          const pixelSize = parseFloat(inlineStyle);
           if (!isNaN(pixelSize) && pixelSize > 0) {
             return Math.round(pixelSize);
           }
-    }
+        }
 
-    // Check computed style
-    const computedStyle = window.getComputedStyle(element);
-    const fontSize = computedStyle.fontSize;
-    const pixelSize = parseFloat(fontSize);
+        // Check computed style
+        const computedStyle = window.getComputedStyle(element);
+        const fontSize = computedStyle.fontSize;
+        const pixelSize = parseFloat(fontSize);
 
         if (!isNaN(pixelSize) && pixelSize > 0) {
           return Math.round(pixelSize);
@@ -3073,10 +4108,10 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
   const applyFontSize = (sizeInPx: number) => {
     if (!editorRef.current) return;
-    
+
     // Save selection before any changes
     const bookmark = saveSelection(editorRef.current);
-    
+
     saveToHistory();
     editorRef.current.focus();
     const selection = window.getSelection();
@@ -3120,34 +4155,34 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
     // Find all blocks in selection (similar to handleBlockFormatSelect)
     const startBlock = findBlockElement(range.startContainer);
-    
+
     // Helper to collect all block elements in a range (including list items and headings inside list items)
     const collectBlocksInRange = (range: Range): Element[] => {
       const blocks: Element[] = [];
       const startContainer = range.startContainer;
       const endContainer = range.endContainer;
-      
+
       // Helper to check if a node is within the range
       const isNodeInRange = (node: Node): boolean => {
         if (node.nodeType !== Node.ELEMENT_NODE) return false;
-        
+
         try {
           const element = node as Element;
-          
+
           // Check if range intersects the node
           if (range.intersectsNode(node)) {
             return true;
           }
-          
+
           // Check if node contains range boundaries
           if (element.contains(startContainer) || element.contains(endContainer)) {
             return true;
           }
-          
+
           // Check if the node is completely within the range
           const nodeRange = document.createRange();
           nodeRange.selectNodeContents(node);
-          
+
           try {
             const startComparison = range.compareBoundaryPoints(Range.START_TO_START, nodeRange);
             const endComparison = range.compareBoundaryPoints(Range.END_TO_END, nodeRange);
@@ -3160,9 +4195,9 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             const nodeEnd = nodeRange.endContainer;
             const startPos = startContainer.compareDocumentPosition(nodeStart);
             const endPos = endContainer.compareDocumentPosition(nodeEnd);
-            
+
             if ((startPos & Node.DOCUMENT_POSITION_FOLLOWING) === 0 &&
-                (endPos & Node.DOCUMENT_POSITION_PRECEDING) === 0) {
+              (endPos & Node.DOCUMENT_POSITION_PRECEDING) === 0) {
               return true;
             }
           }
@@ -3175,28 +4210,28 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
       // Collect all blocks by traversing from start to end
       const allBlocks: Element[] = [];
-      
+
       if (editorRef.current) {
         // Get all list items
         const allListItems = editorRef.current.querySelectorAll('li');
         allListItems.forEach((li) => {
           allBlocks.push(li);
         });
-        
+
         // Get all other block elements
         const allOtherBlocks = editorRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, pre, div, blockquote');
         allOtherBlocks.forEach((block) => {
           allBlocks.push(block);
         });
       }
-      
+
       // Filter blocks that are in the range
       allBlocks.forEach((block) => {
         if (isNodeInRange(block) && !blocks.includes(block)) {
           blocks.push(block);
         }
       });
-      
+
       // Also use TreeWalker as fallback
       const walker = document.createTreeWalker(
         range.commonAncestorContainer,
@@ -3270,17 +4305,17 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           startBlock.style.fontSize = `${sizeInPx}px`;
         }
       }
-      } else {
+    } else {
       // No block found, wrap in span
-        const span = document.createElement('span');
-        span.style.fontSize = `${sizeInPx}px`;
-        try {
-          range.surroundContents(span);
-          const newRange = document.createRange();
-          newRange.selectNodeContents(span);
-          selection.removeAllRanges();
-          selection.addRange(newRange);
-        } catch (e) {
+      const span = document.createElement('span');
+      span.style.fontSize = `${sizeInPx}px`;
+      try {
+        range.surroundContents(span);
+        const newRange = document.createRange();
+        newRange.selectNodeContents(span);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      } catch (e) {
         try {
           const contents = range.extractContents();
           span.appendChild(contents);
@@ -3290,29 +4325,29 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           selection.removeAllRanges();
           selection.addRange(newRange);
         } catch (extractError) {
-      editorRef.current.focus();
+          editorRef.current.focus();
         }
       }
-          }
-          
-          setFontSizeUpdateTrigger(prev => prev + 1);
+    }
+
+    setFontSizeUpdateTrigger(prev => prev + 1);
     setTimeout(() => saveToHistory(), 10);
-          handleContentChange();
-          
-          // Restore selection after font size change
-          if (bookmark) {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                restoreSelection(editorRef.current!, bookmark);
-                editorRef.current?.focus();
-              });
-            });
-            
-            setTimeout(() => {
-              restoreSelection(editorRef.current!, bookmark);
-              editorRef.current?.focus();
-            }, 10);
-          }
+    handleContentChange();
+
+    // Restore selection after font size change
+    if (bookmark) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          restoreSelection(editorRef.current!, bookmark);
+          editorRef.current?.focus();
+        });
+      });
+
+      setTimeout(() => {
+        restoreSelection(editorRef.current!, bookmark);
+        editorRef.current?.focus();
+      }, 10);
+    }
   };
 
   const getCurrentFontColor = (): string | null => {
@@ -3332,29 +4367,29 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     let element: Element | null = startNode as Element;
     while (element && element !== editorRef.current) {
       if (element.nodeType === Node.ELEMENT_NODE) {
-    const computedStyle = window.getComputedStyle(element);
-    const color = computedStyle.color;
+        const computedStyle = window.getComputedStyle(element);
+        const color = computedStyle.color;
 
         // Skip if color is transparent or default (might be inherited)
         if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
-    // Convert rgb/rgba to hex if needed
-    if (color.startsWith('rgb')) {
-      const rgb = color.match(/\d+/g);
-      if (rgb && rgb.length >= 3) {
-        const r = parseInt(rgb[0]).toString(16).padStart(2, '0');
-        const g = parseInt(rgb[1]).toString(16).padStart(2, '0');
-        const b = parseInt(rgb[2]).toString(16).padStart(2, '0');
+          // Convert rgb/rgba to hex if needed
+          if (color.startsWith('rgb')) {
+            const rgb = color.match(/\d+/g);
+            if (rgb && rgb.length >= 3) {
+              const r = parseInt(rgb[0]).toString(16).padStart(2, '0');
+              const g = parseInt(rgb[1]).toString(16).padStart(2, '0');
+              const b = parseInt(rgb[2]).toString(16).padStart(2, '0');
               const hex = `#${r}${g}${b}`.toUpperCase();
               // Only return if not black (default), or if explicitly set
               if (hex !== '#000000' || (element instanceof HTMLElement && element.style.color)) {
                 return hex;
               }
-      }
-    }
+            }
+          }
 
-    // If already hex, return as is
-    if (color.startsWith('#')) {
-      return color;
+          // If already hex, return as is
+          if (color.startsWith('#')) {
+            return color;
           }
         }
 
@@ -3387,12 +4422,83 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
     return '#000000';
   };
 
-                return (
+  const getCurrentBackgroundColor = (): string | null => {
+    if (!editorRef.current) return null;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+
+    const range = selection.getRangeAt(0);
+
+    // Try to get background color from the start of selection first
+    let startNode: Node = range.startContainer;
+    if (startNode.nodeType === Node.TEXT_NODE) {
+      startNode = startNode.parentElement || startNode;
+    }
+
+    // Traverse up to find element with background color style
+    let element: Element | null = startNode as Element;
+    while (element && element !== editorRef.current) {
+      if (element.nodeType === Node.ELEMENT_NODE) {
+        const computedStyle = window.getComputedStyle(element);
+        const backgroundColor = computedStyle.backgroundColor;
+
+        // Skip if background color is transparent or default (might be inherited)
+        if (backgroundColor && backgroundColor !== 'rgba(0, 0, 0, 0)' && backgroundColor !== 'transparent' && backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          // Convert rgb/rgba to hex if needed
+          if (backgroundColor.startsWith('rgb')) {
+            const rgb = backgroundColor.match(/\d+/g);
+            if (rgb && rgb.length >= 3) {
+              const r = parseInt(rgb[0]).toString(16).padStart(2, '0');
+              const g = parseInt(rgb[1]).toString(16).padStart(2, '0');
+              const b = parseInt(rgb[2]).toString(16).padStart(2, '0');
+              const hex = `#${r}${g}${b}`.toUpperCase();
+              // Only return if not white/transparent (default), or if explicitly set
+              if ((hex !== '#FFFFFF' && hex !== '#000000') || (element instanceof HTMLElement && element.style.backgroundColor)) {
+                return hex;
+              }
+            }
+          }
+
+          // If already hex, return as is
+          if (backgroundColor.startsWith('#')) {
+            return backgroundColor;
+          }
+        }
+
+        // Check inline style
+        if (element instanceof HTMLElement) {
+          const inlineBackgroundColor = (element as HTMLElement).style.backgroundColor;
+          if (inlineBackgroundColor) {
+            // Convert to hex if needed
+            if (inlineBackgroundColor.startsWith('rgb')) {
+              const rgb = inlineBackgroundColor.match(/\d+/g);
+              if (rgb && rgb.length >= 3) {
+                const r = parseInt(rgb[0]).toString(16).padStart(2, '0');
+                const g = parseInt(rgb[1]).toString(16).padStart(2, '0');
+                const b = parseInt(rgb[2]).toString(16).padStart(2, '0');
+                return `#${r}${g}${b}`.toUpperCase();
+              }
+            }
+            if (inlineBackgroundColor.startsWith('#')) {
+              return inlineBackgroundColor;
+            }
+          }
+        }
+      }
+
+      element = element.parentElement;
+    }
+
+    // Fallback: return null (no background color)
+    return null;
+  };
+
+  return (
     <>
       <div className={`hh-rich-text-editor ${isFullscreen ? 'hh-fullscreen' : ''} ${disabled ? 'hh-disabled' : ''}`}>
         <Toolbar
           toolbar={toolbar}
-              disabled={disabled}
+          disabled={disabled}
           showBlockFormatDropdown={showBlockFormatDropdown}
           fontSizeUpdateTrigger={fontSizeUpdateTrigger}
           onToggleBlockFormat={() => {
@@ -3407,11 +4513,41 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
             }
           }}
           onBlockFormatSelect={handleBlockFormatSelect}
-          onDecreaseFontSize={handleDecreaseFontSize}
-          onIncreaseFontSize={handleIncreaseFontSize}
+          showFontSizeDropdown={showFontSizeDropdown}
+          onToggleFontSize={() => {
+            const willShow = !showFontSizeDropdown;
+            setShowFontSizeDropdown(willShow);
+            setShowBlockFormatDropdown(false);
+            setShowFontFamilyDropdown(false);
+            // Update font size when opening dropdown to show current selection
+            if (willShow) {
+              // Force update to get latest font size after dropdown opens
+              setTimeout(() => {
+                setFontSizeUpdateTrigger(prev => prev + 1);
+              }, 0);
+            }
+          }}
+          onFontSizeSelect={handleFontSizeSelect}
+          showFontFamilyDropdown={showFontFamilyDropdown}
+          onToggleFontFamily={() => {
+            const willShow = !showFontFamilyDropdown;
+            setShowFontFamilyDropdown(willShow);
+            setShowBlockFormatDropdown(false);
+            setShowFontSizeDropdown(false);
+            // Update font family when opening dropdown to show current selection
+            if (willShow) {
+              // Force update to get latest font family after dropdown opens
+              setTimeout(() => {
+                setFontFamilyUpdateTrigger(prev => prev + 1);
+              }, 0);
+            }
+          }}
+          onFontFamilySelect={handleFontFamilySelect}
           getCurrentBlockFormat={getCurrentBlockFormat}
-          getCurrentFontSizeLabel={getCurrentFontSizeLabel}
+          getCurrentFontSize={getCurrentFontSize}
+          getCurrentFontFamily={getCurrentFontFamily}
           blockFormatUpdateTrigger={blockFormatUpdateTrigger}
+          fontFamilyUpdateTrigger={fontFamilyUpdateTrigger}
           showAlignmentDropdown={showAlignmentDropdown}
           onToggleAlignment={() => {
             const willShow = !showAlignmentDropdown;
@@ -3425,10 +4561,10 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           }}
           onAlignmentSelect={(alignment: string) => {
             if (!editorRef.current) return;
-            
+
             // Save selection before any changes
             const bookmark = saveSelection(editorRef.current);
-            
+
             const commandMap: Record<string, string> = {
               'left': 'justifyLeft',
               'center': 'justifyCenter',
@@ -3440,7 +4576,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
               execCommand(command);
             }
             setShowAlignmentDropdown(false);
-            
+
             // Restore selection after alignment change
             if (bookmark) {
               requestAnimationFrame(() => {
@@ -3449,7 +4585,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                   editorRef.current?.focus();
                 });
               });
-              
+
               setTimeout(() => {
                 restoreSelection(editorRef.current!, bookmark);
                 editorRef.current?.focus();
@@ -3487,17 +4623,35 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           onOpenColorPicker={() => openColorPicker(getCurrentFontColor() || undefined)}
           onColorMouseEnter={(color, e) => {
             setHoveredColor(color);
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setHoveredColorPosition({
-                              x: rect.left + rect.width / 2,
-                              y: rect.top - 10
-                            });
-                          }}
+            const rect = e.currentTarget.getBoundingClientRect();
+            setHoveredColorPosition({
+              x: rect.left + rect.width / 2,
+              y: rect.top - 10
+            });
+          }}
           onColorMouseLeave={() => {
-                            setHoveredColor(null);
-                            setHoveredColorPosition(null);
-                          }}
-          getCurrentFontColor={getCurrentFontColor}
+            setHoveredColor(null);
+            setHoveredColorPosition(null);
+          }}
+          showBackgroundColorDropdown={showBackgroundColorDropdown}
+          currentBackgroundColor={getCurrentBackgroundColor()}
+          hoveredBackgroundColor={hoveredBackgroundColor}
+          onToggleBackgroundColor={() => setShowBackgroundColorDropdown(!showBackgroundColorDropdown)}
+          onBackgroundColorSelect={handleBackgroundColorSelect}
+          onRemoveBackgroundColor={handleRemoveBackgroundColor}
+          onOpenBackgroundColorPicker={() => openColorPicker(getCurrentBackgroundColor() || undefined, true)}
+          onBackgroundColorMouseEnter={(color, e) => {
+            setHoveredBackgroundColor(color);
+            const rect = e.currentTarget.getBoundingClientRect();
+            setHoveredBackgroundColorPosition({
+              x: rect.left + rect.width / 2,
+              y: rect.top - 10
+            });
+          }}
+          onBackgroundColorMouseLeave={() => {
+            setHoveredBackgroundColor(null);
+            setHoveredBackgroundColorPosition(null);
+          }}
           onToolbarClick={handleToolbarClick}
           getButtonActiveState={getButtonActiveState}
           buttonStateUpdateTrigger={buttonStateUpdateTrigger}
@@ -3573,7 +4727,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
                 <div className="hh-image-position-indicator">
                   {imageAlignment === 'right' ? 'Right' : imageAlignment === 'left' ? 'Left' : imageAlignment === 'center' ? 'Center' : 'Inline'} (auto, auto)
                 </div>
-        </div>
+              </div>
 
               {/* Image Toolbar */}
               <div
@@ -3597,7 +4751,7 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
 
       {/* Color tooltip - rendered outside dropdown to prevent layout shift */}
       {hoveredColor && hoveredColorPosition && showFontColorDropdown && (
-        <div 
+        <div
           className="hh-color-tooltip"
           style={{
             left: `${hoveredColorPosition.x}px`,
@@ -3605,6 +4759,19 @@ const AuroraEditor: React.FC<AuroraEditorProps> = ({
           }}
         >
           {fontColors.find(c => c.value === hoveredColor)?.label || hoveredColor}
+        </div>
+      )}
+
+      {/* Background color tooltip - rendered outside dropdown to prevent layout shift */}
+      {hoveredBackgroundColor && hoveredBackgroundColorPosition && showBackgroundColorDropdown && (
+        <div
+          className="hh-color-tooltip"
+          style={{
+            left: `${hoveredBackgroundColorPosition.x}px`,
+            top: `${hoveredBackgroundColorPosition.y}px`
+          }}
+        >
+          {fontColors.find(c => c.value === hoveredBackgroundColor)?.label || hoveredBackgroundColor}
         </div>
       )}
 
